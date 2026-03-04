@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v3"; // ⬅️ Aumentei para v3 para forçar a atualização
+const CACHE_VERSION = "v4"; // ⬅️ Aumentei para v3 para forçar a atualização
 const CACHE_NAME = `financeiro-pwa-${CACHE_VERSION}`;
 
 const FILES_TO_CACHE = [

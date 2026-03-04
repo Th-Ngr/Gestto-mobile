@@ -15,16 +15,8 @@
     <div class="auth-card-content">
         <h1 class="logo" style="color: var(--primary); font-size: 2rem;">Gestto</h1>
         <p style="margin-bottom: 20px; opacity: 0.7;">Gestão simples para o seu negócio</p>
-        
-        <div class="form-group">
-            <input type="email" id="email" required>
-            <label>E-mail</label>
-        </div>
-        <div class="form-group">
-            <input type="password" id="password" required>
-            <label>Senha</label>
-        </div>
-        
+        <div class="form-group"><input type="email" id="email" required><label>E-mail</label></div>
+        <div class="form-group"><input type="password" id="password" required><label>Senha</label></div>
         <button class="primary-btn" id="btnLogin">Entrar</button>
         <button class="nav-item" id="btnOpenRegister" style="margin-top: 15px; width: 100%;">Criar nova conta</button>
     </div>
@@ -51,27 +43,24 @@
             <span class="saldo-label">Saldo Geral (Mês)</span>
             <h2 class="saldo-valor">R$ <span id="lucro">0,00</span></h2>
         </div>
-        <div class="month-filter">
-            <select id="monthSelect" class="month-select-styled"></select>
-        </div>
+        <div class="month-filter"><select id="monthSelect" class="month-select-styled"></select></div>
     </header>
 
     <main class="container" id="tela-lancamentos">
         <section class="section">
-    <div class="section-header" onclick="toggleSecao('entradaBody', this)">
-        <h3>Entradas (R$ <span id="totalEntrada">0,00</span>)</h3>
-        <span class="chevron"> <i class="fa-solid fa-chevron-down"></i> </span>
-    </div>
-    <div class="card-list" id="entradaBody"></div>
-    </section>
+            <div class="section-header" onclick="toggleSecao('entradaBody', this)">
+                <h3>Entradas (R$ <span id="totalEntrada">0,00</span>)</h3>
+                <span class="chevron"> <i class="fa-solid fa-chevron-down"></i> </span>
+            </div>
+            <div class="card-list" id="entradaBody"></div>
+        </section>
 
         <section class="section">
-    <div class="section-header" onclick="toggleSecao('saidaBody', this)">
-        <h3>Saídas (R$ <span id="totalSaida">0,00</span>)</h3>
-        <span class="chevron"> <i class="fa-solid fa-chevron-down"></i> </span>
-    </div>
-    <div class="card-list" id="saidaBody"></div>
-</section>
+            <div class="section-header" onclick="toggleSecao('saidaBody', this)">
+                <h3>Saídas (R$ <span id="totalSaida">0,00</span>)</h3>
+                <span class="chevron"> <i class="fa-solid fa-chevron-down"></i> </span>
+            </div>
+            <div class="card-list" id="saidaBody"></div>
         </section>
 
         <section class="quick-form">
@@ -81,30 +70,28 @@
             <div class="form-group"><input type="number" id="valor" required><label>Valor</label></div>
             <div class="form-group"><input type="date" id="data" required><label>Data</label></div>
             
-            <input type="hidden" id="tipo" value="entrada">
-            <div class="month-filter" style="margin-bottom: 15px; justify-content: flex-start;">
-                <button type="button" id="btnTipoE" class="active" onclick="setTipo('entrada')">Entrada</button>
-                <button type="button" id="btnTipoS" onclick="setTipo('saida')">Saída</button>
+            <div class="month-filter" style="margin-bottom: 15px; justify-content: flex-start; gap: 20px; align-items: center;">
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" id="btnTipoE" class="active" onclick="setTipo('entrada')">Entrada</button>
+                    <button type="button" id="btnTipoS" onclick="setTipo('saida')">Saída</button>
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="isFixa" style="width: 20px; height: 20px;">
+                    <label for="isFixa" style="position: static; font-size: 14px;">Fixa Mensal?</label>
+                </div>
             </div>
             
-            <input type="hidden" id="pagamento" value="Pix">
-            <input type="hidden" id="status" value="Pago">
-            <input type="hidden" id="ajudante" value="0">
-            <input type="checkbox" id="isFixa" style="display:none">
-
+            <input type="hidden" id="tipo" value="entrada">
             <button class="primary-btn" onclick="addLancamento()">Adicionar</button>
         </section>
     </main>
 
     <main class="container" id="perfilSection" style="display: none;">
         <div class="quick-form" style="text-align: center;">
-            <div class="icon income" style="width: 80px; height: 80px; font-size: 40px; margin: 0 auto 15px;">
-                <i class="fa-solid fa-user"></i>
-            </div>
+            <div class="icon income" style="width: 80px; height: 80px; font-size: 40px; margin: 0 auto 15px;"><i class="fa-solid fa-user"></i></div>
             <h2 id="perfilNome">Carregando...</h2>
             <p id="perfilEmail" style="opacity: 0.6; margin-bottom: 20px;"></p>
-            <hr style="margin-bottom: 20px; opacity: 0.1;">
-            <button class="primary-btn" style="background: var(--danger);" onclick="logout()">Sair da Conta</button>
+            <button class="primary-btn" style="background: #ff4d4d;" onclick="logout()">Sair da Conta</button>
         </div>
     </main>
 
@@ -114,19 +101,33 @@
     </nav>
 </div>
 
-<div id="editModal" class="modal-overlay" style="display:none;">
-    <div class="quick-form">
-        <h3>Editar Registro</h3>
-        <div class="form-group"><input type="text" id="editDescricao" required><label>Descrição</label></div>
-        <div class="form-group"><input type="number" id="editValor" required><label>Valor</label></div>
-        <div class="form-group"><input type="date" id="editData" required><label>Data</label></div>
-        <input type="hidden" id="editCliente"><input type="hidden" id="editTipo"><input type="hidden" id="editPagamento"><input type="hidden" id="editStatus"><input type="hidden" id="editAjudante">
-        <button class="primary-btn" onclick="salvarEdicao()">Salvar Alterações</button>
-        <button class="nav-item" onclick="fecharModal()" style="width:100%; margin-top:10px;">Cancelar</button>
+<div id="editModal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:2000; align-items:center; justify-content:center; padding:20px;">
+    <div class="modal-content" style="background:white; width:100%; max-width:400px; border-radius:15px; padding:20px;">
+        <h3 style="margin-bottom:20px;">Editar Lançamento</h3>
+        <input type="hidden" id="editId">
+        <input type="text" id="editDescricao" placeholder="Descrição" style="width:100%; margin-bottom:10px; padding:12px; border:1px solid #ddd; border-radius:8px;">
+        <input type="number" id="editValor" placeholder="Valor" style="width:100%; margin-bottom:10px; padding:12px; border:1px solid #ddd; border-radius:8px;">
+        <input type="date" id="editData" style="width:100%; margin-bottom:10px; padding:12px; border:1px solid #ddd; border-radius:8px;">
+        
+        <select id="editMes" style="width:100%; margin-bottom:10px; padding:12px; border:1px solid #ddd; border-radius:8px;">
+            <option value="Janeiro">Janeiro</option><option value="Fevereiro">Fevereiro</option><option value="Março">Março</option>
+            <option value="Abril">Abril</option><option value="Maio">Maio</option><option value="Junho">Junho</option>
+            <option value="Julho">Julho</option><option value="Agosto">Agosto</option><option value="Setembro">Setembro</option>
+            <option value="Outubro">Outubro</option><option value="Novembro">Novembro</option><option value="Dezembro">Dezembro</option>
+        </select>
+        
+        <select id="editStatus" style="width:100%; margin-bottom:20px; padding:12px; border:1px solid #ddd; border-radius:8px;">
+            <option value="Pago">Pago</option>
+            <option value="Pendente">Pendente</option>
+        </select>
+
+        <div style="display:flex; gap:10px;">
+            <button onclick="fecharModal()" style="flex:1; padding:12px; background:#eee; border:none; border-radius:8px;">Cancelar</button>
+            <button onclick="salvarEdicao()" style="flex:1; padding:12px; background:var(--primary); color:white; border:none; border-radius:8px;">Salvar</button>
+        </div>
     </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script type="module" src="script.js"></script>
 </body>
 </html>
