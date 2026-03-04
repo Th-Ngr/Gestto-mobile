@@ -1,0 +1,366 @@
+:root {
+  --primary: #20B2AA;
+  --background: #F8FAFC;
+  --text: #1F2937;
+  --danger: #EF4444;
+  --success: #10B981;
+  --warning: #F59E0B;
+  --radius: 8px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', sans-serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--text);
+  padding-bottom: 80px;
+}
+
+/* HEADER */
+
+.header {
+  position: sticky;
+  top: 0;
+  background: white;
+  padding: 16px;
+  text-align: center;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.logo {
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+
+.saldo-label {
+  font-size: 12px;
+  display: block;
+}
+
+.saldo-valor {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 8px 0 16px;
+}
+
+.month-filter {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.month-filter button {
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: none;
+  background: #e5e7eb;
+  cursor: pointer;
+}
+
+.month-filter .active {
+  background: var(--primary);
+  color: white;
+}
+
+/* CONTAINER */
+
+.container {
+  padding: 16px;
+}
+
+/* SECTION */
+
+.section {
+  margin-bottom: 24px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+/* CARDS */
+
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.transaction-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: white;
+  padding: 16px;
+  border-radius: var(--radius);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+
+.icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: white;
+}
+
+.income {
+  background: var(--success);
+}
+
+.expense {
+  background: var(--danger);
+}
+
+.info {
+  flex: 1;
+  margin-left: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.category {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.right {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.amount {
+  font-weight: 600;
+}
+
+/* BADGES */
+
+.badge {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 20px;
+  color: white;
+}
+
+.paid {
+  background: var(--success);
+}
+
+.pending {
+  background: var(--warning);
+}
+
+/* FORM */
+
+.quick-form {
+  background: white;
+  padding: 16px;
+  border-radius: var(--radius);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+
+.quick-form h3 {
+  margin-bottom: 16px;
+}
+
+.form-group {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.form-group input {
+  width: 100%;
+  height: 48px;
+  border: 1px solid #d1d5db;
+  border-radius: var(--radius);
+  padding: 16px 12px 4px;
+  font-size: 16px;
+  outline: none;
+}
+
+.form-group label {
+  position: absolute;
+  left: 12px;
+  top: 14px;
+  font-size: 12px;
+  color: #6b7280;
+  transition: 0.2s ease;
+  pointer-events: none;
+}
+
+.form-group input:focus + label,
+.form-group input:valid + label {
+  top: 4px;
+  font-size: 10px;
+  color: var(--primary);
+}
+
+.primary-btn {
+  width: 100%;
+  height: 48px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* BOTTOM NAV */
+
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  width: 100%;
+  height: 64px;
+  background: white;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  border-top: 1px solid #e5e7eb;
+}
+
+.nav-item {
+  background: none;
+  border: none;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.nav-item.active {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* RESPONSIVE */
+
+@media (min-width: 768px) {
+  .container {
+    max-width: 480px;
+    margin: auto;
+  }
+}:root {
+  --primary: #20B2AA;
+  --background: #F8FAFC;
+  --text: #1F2937;
+  --danger: #EF4444;
+  --success: #10B981;
+  --warning: #F59E0B;
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+
+body { background: var(--background); color: var(--text); padding-bottom: 80px; overflow-x: hidden; }
+
+/* AUTH & MODALS */
+#auth { 
+    height: 100vh; display: flex; align-items: center; justify-content: center; 
+    background: var(--primary); padding: 20px; position: fixed; width: 100%; z-index: 10000;
+}
+.auth-card-content { background: white; padding: 30px; border-radius: 20px; width: 100%; max-width: 400px; text-align: center; }
+.modal-overlay { 
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+    background: rgba(0,0,0,0.5); z-index: 11000; display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+
+/* HEADER */
+.header { position: sticky; top: 0; background: white; padding: 16px; text-align: center; border-bottom: 1px solid #e5e7eb; z-index: 900; }
+.logo { font-size: 18px; font-weight: 700; color: var(--text); }
+.saldo-label { font-size: 12px; opacity: 0.6; }
+.saldo-valor { font-size: 26px; font-weight: 700; margin: 5px 0 15px; }
+
+.month-select-styled {
+    width: 100%; max-width: 200px; padding: 8px; border-radius: 20px; border: none; 
+    background: #e5e7eb; font-weight: 600; color: var(--text); text-align: center; outline: none;
+}
+
+/* CARDS */
+.container { padding: 16px; max-width: 500px; margin: 0 auto; }
+.section { margin-bottom: 24px; }
+.section-header { margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+.card-list { display: flex; flex-direction: column; gap: 10px; }
+
+.transaction-card {
+  display: flex; align-items: center; background: white; padding: 12px; 
+  border-radius: var(--radius); box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+.icon { width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; color: white; flex-shrink: 0; }
+.income { background: var(--success); }
+.expense { background: var(--danger); }
+.info { flex: 1; margin-left: 12px; }
+.title { font-size: 14px; font-weight: 600; display: block; }
+.category { font-size: 11px; opacity: 0.5; }
+.right { text-align: right; }
+.amount { font-weight: 700; font-size: 14px; display: block; }
+.badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; color: white; }
+.paid { background: var(--success); }
+.pending { background: var(--warning); }
+
+
+
+/* Esconde a lista de cards */
+.card-list.hidden {
+    display: none !important;
+}
+
+/* Estilo para o cabeçalho clicável */
+.section-header {
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    user-select: none;
+}
+
+/* Ícone de seta (Chevron) */
+.chevron {
+    font-size: 18px;
+    transition: transform 0.3s ease;
+    color: var(--primary);
+    font-weight: bold;
+}
+
+/* Roda a seta quando estiver fechado */
+.section-header.closed .chevron {
+    transform: rotate(-90deg);
+} 
+/* FORMS */
+.quick-form { background: white; padding: 20px; border-radius: var(--radius); box-shadow: 0 4px 12px rgba(0,0,0,0.05); width: 100%; }
+.form-group { position: relative; margin-bottom: 15px; }
+.form-group input { width: 100%; height: 45px; border: 1px solid #d1d5db; border-radius: 8px; padding: 15px 10px 5px; font-size: 15px; outline: none; }
+.form-group label { position: absolute; left: 10px; top: 12px; font-size: 12px; color: #6b7280; transition: 0.2s; pointer-events: none; }
+.form-group input:focus + label, .form-group input:valid + label { top: 3px; font-size: 10px; color: var(--primary); }
+
+.primary-btn { width: 100%; height: 48px; border: none; border-radius: 8px; background: var(--primary); color: white; font-weight: 700; cursor: pointer; transition: 0.2s; }
+.primary-btn:active { transform: scale(0.98); opacity: 0.9; }
+
+.month-filter button { padding: 5px 15px; border-radius: 15px; border: 1px solid #ddd; background: white; font-size: 12px; }
+.month-filter button.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+/* NAV */
+.bottom-nav { position: fixed; bottom: 0; width: 100%; height: 65px; background: white; display: flex; justify-content: space-around; align-items: center; border-top: 1px solid #eee; z-index: 1000; }
+.nav-item { background: none; border: none; font-size: 13px; color: var(--text); opacity: 0.6; cursor: pointer; padding: 10px; }
+.nav-item.active { opacity: 1; color: var(--primary); font-weight: 700; }
