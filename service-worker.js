@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gestto-gh-v2.0.2';
+const CACHE_NAME = 'gestto-gh-v2.0.3';
 const APP_PREFIX = '/Gestto-mobile';
 
 const assets = [
