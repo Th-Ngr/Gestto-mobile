@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { getFirestore, collection, addDoc, getDocs, query, where, deleteDoc, doc, setDoc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -22,7 +22,7 @@ window.logErroTelegram = async (local, erro) => {
     const TOKEN = "8735026345:AAGLIG0AGlP5CfaFVEGuGb0cVU0IyUCbPNo";
     const CHAT_ID = "8125669194";
     
-    let infoUsuario = "Não logado";
+        let infoUsuario = "Não logado";
     let infoEmpresa = "N/A";
 
     if (auth.currentUser) {
@@ -41,14 +41,14 @@ window.logErroTelegram = async (local, erro) => {
     }
 
     const mensagemHTML = `
-<b>🔴 ERRO CRÍTICO NO SISTEMA</b>
-_______________________________
-<b>📍 Local:</b> ${local}
-<b>❌ Erro:</b> ${erro}
+    <b>🔴 ERRO CRÍTICO NO SISTEMA</b>
+    ______________________________
+    <b>📍 Local:</b> ${local}
+    <b>❌ Erro:</b> ${erro}
 
-<b>👤 Usuário:</b> ${infoUsuario}
-<b>🏢 Empresa:</b> ${infoEmpresa}
-<b>📱 Device:</b> ${navigator.userAgent.slice(0, 60)}
+    <b>👤 Usuário:</b> ${infoUsuario}
+    <b>🏢 Empresa:</b> ${infoEmpresa}
+    <b>📱 Device:</b> ${navigator.userAgent.slice(0, 60)}
 _______________________________
     `;
 
@@ -369,6 +369,49 @@ window.toggleSecao = (id, header) => {
 document.getElementById("btnLogin").onclick = () => {
     signInWithEmailAndPassword(auth, document.getElementById("email").value, document.getElementById("password").value)
     .catch(e => window.logErroTelegram("Login", e.message));
+
+    // Certifique-se de adicionar 'createUserWithEmailAndPassword' no seu import lá no topo:
+// import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, ... } from "...";
+
+const btnRegistrar = document.getElementById("btnRegistrar");
+
+if (btnRegistrar) {
+    btnRegistrar.addEventListener("click", async () => {
+        const nome = document.getElementById("cadNome").value;
+        const email = document.getElementById("cadEmail").value;
+        const senha = document.getElementById("cadSenha").value;
+
+        if (!email || !senha || !nome) {
+            alert("Por favor, preencha todos os campos.");
+            return;
+        }
+
+        try {
+            // 1. Cria o usuário no Firebase Auth
+            const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
+            const user = userCredential.user;
+
+            // 2. Salva o nome do usuário no Firestore (opcional, mas recomendado)
+            await setDoc(doc(db, "usuarios", user.uid), {
+                nome: nome,
+                email: email,
+                createdAt: new Date()
+            });
+
+            alert("Conta criada com sucesso!");
+            window.mostrarLogin(); // Volta para a tela de login
+            
+        } catch (error) {
+            console.error("Erro ao cadastrar:", error);
+            let mensagem = "Erro ao criar conta.";
+            if (error.code === 'auth/email-already-in-use') mensagem = "Este e-mail já está em uso.";
+            if (error.code === 'auth/weak-password') mensagem = "A senha deve ter pelo menos 6 caracteres.";
+            
+            alert(mensagem);
+            window.logErroTelegram("Cadastro", error.message);
+        }
+    });
+}
 };
 
 // Abrir Modal de Perfil
