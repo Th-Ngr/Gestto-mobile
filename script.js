@@ -356,7 +356,29 @@ window.instalarPWA = async () => {
 };
 
 // --- UTILITÁRIOS ---
-window.logout = () => signOut(auth);
+window.logout = async () => {
+    try {
+        // 1. Desloga do Firebase
+        await signOut(auth);
+        
+        // 2. Esconde todos os modais e seções que podem estar abertas
+        const modais = ["modalPerfil", "perfilSection", "modalNovo", "modalGerenciadorFixos", "modalGerenciadorServicos"];
+        modais.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = "none";
+        });
+
+        // 3. Garante que a tela de login apareça e o app suma
+        document.getElementById("auth").style.display = "flex"; 
+        document.getElementById("app").style.display = "none";
+
+        // Opcional: Recarregar a página limpa qualquer lixo da memória
+        // location.reload(); 
+        
+    } catch (e) {
+        window.logErroTelegram("Logout", e.message);
+    }
+};
 window.toggleSecao = (id, header) => { 
     document.getElementById(id).classList.toggle('hidden'); 
     header.classList.toggle('closed'); 
@@ -689,10 +711,17 @@ window.verificarSugestaoServico = async (valorDigitado) => {
 };
 
 // Chamar atualização ao iniciar o app
-onAuthStateChanged(auth, user => {
+onAuthStateChanged(auth, async (user) => {
     if (user) { 
-        // ... funções existentes ...
-        window.atualizarDatalistServicos(); 
+        // ... (seu código de quando está logado)
+    } else { 
+        // Quando o usuário sai:
+        document.getElementById("auth").style.display = "flex"; 
+        document.getElementById("app").style.display = "none";
+        
+        // Esconde a seção de perfil caso ela tenha ficado aberta
+        const perfil = document.getElementById("perfilSection");
+        if(perfil) perfil.style.display = "none";
     }
 });
 
