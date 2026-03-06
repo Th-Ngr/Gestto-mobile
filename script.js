@@ -83,6 +83,16 @@ onAuthStateChanged(auth, async (user) => { // Adicionado async aqui
     }
 });
 
+function configurarMeses() {
+    const select = document.getElementById("monthSelect");
+    if(select && select.options.length === 0) {
+        months.forEach(m => { let opt = document.createElement("option"); opt.value = m; opt.textContent = m; select.appendChild(opt); });
+        select.value = months[new Date().getMonth()];
+        select.onchange = carregarLancamentos;
+    }
+}
+
+
 // --- NAVEGAÇÃO ---
 window.navegar = (pagina) => {
     document.getElementById("tela-lancamentos").style.display = pagina === 'home' ? 'block' : 'none';
