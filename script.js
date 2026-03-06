@@ -62,29 +62,26 @@ _______________________________
 };
 
 // --- CONTROLO DO APP & AUTH ---
-onAuthStateChanged(auth, user => {
+onAuthStateChanged(auth, async (user) => { // Adicionado async aqui
     if (user) { 
         document.getElementById("auth").style.display = "none"; 
         document.getElementById("app").style.display = "block"; 
         configurarMeses(); 
         carregarLancamentos(); 
-        const qRegras = query(collection(db, "regras_categorias"), where("uid", "==", user.uid));
-        
-    regrasCategorias = snapRegras.docs.map(d => d.data());
+
+        try {
+            // CORREÇÃO: Criando a variável snapRegras que estava faltando
+            const qRegras = query(collection(db, "regras_categorias"), where("uid", "==", user.uid));
+            const snapRegras = await getDocs(qRegras); // Agora ela está definida!
+            regrasCategorias = snapRegras.docs.map(d => d.data());
+        } catch (e) {
+            console.error("Erro ao carregar regras:", e);
+        }
     } else { 
         document.getElementById("auth").style.display = "flex"; 
         document.getElementById("app").style.display = "none"; 
     }
 });
-
-function configurarMeses() {
-    const select = document.getElementById("monthSelect");
-    if(select && select.options.length === 0) {
-        months.forEach(m => { let opt = document.createElement("option"); opt.value = m; opt.textContent = m; select.appendChild(opt); });
-        select.value = months[new Date().getMonth()];
-        select.onchange = carregarLancamentos;
-    }
-}
 
 // --- NAVEGAÇÃO ---
 window.navegar = (pagina) => {
