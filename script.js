@@ -394,33 +394,47 @@ window.toggleSecao = (id, header) => {
     header.classList.toggle('closed'); 
 };
 
-// Eventos de Botões (Login / Cadastro)
-document.getElementById("btnLogin").onclick = () => {
-    signInWithEmailAndPassword(auth, document.getElementById("email").value, document.getElementById("password").value)
-    .catch(e => window.logErroTelegram("Login", e.message));
+// ==========================================
+// EVENTOS DE AUTENTICAÇÃO (LOGIN / CADASTRO)
+// ==========================================
 
-    // Certifique-se de adicionar 'createUserWithEmailAndPassword' no seu import lá no topo:
-// import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, ... } from "...";
+// 1. LÓGICA DE LOGIN
+document.getElementById("btnLogin").onclick = async () => {
+    const email = document.getElementById("email").value;
+    const pass = document.getElementById("password").value;
+    
+    try {
+        await signInWithEmailAndPassword(auth, email, pass);
+        // O onAuthStateChanged cuidará de mostrar a tela do app
+    } catch (e) {
+        alert("Erro no login: " + e.message);
+        window.logErroTelegram("Login", e.message);
+    }
+};
 
+// 2. LÓGICA DE CADASTRO
 const btnRegistrar = document.getElementById("btnRegistrar");
 
 if (btnRegistrar) {
-    btnRegistrar.addEventListener("click", async () => {
+    btnRegistrar.onclick = async (e) => {
+        // Evita que a página recarregue caso o botão esteja em um form
+        if (e) e.preventDefault();
+
         const nome = document.getElementById("cadNome").value;
         const email = document.getElementById("cadEmail").value;
         const senha = document.getElementById("cadSenha").value;
 
         if (!email || !senha || !nome) {
-            alert("Por favor, preencha todos os campos.");
+            alert("Por favor, preencha todos os campos de cadastro.");
             return;
         }
 
         try {
-            // 1. Cria o usuário no Firebase Auth
+            // Cria o usuário
             const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
             const user = userCredential.user;
 
-            // 2. Salva o nome do usuário no Firestore (opcional, mas recomendado)
+            // Salva dados adicionais no Firestore
             await setDoc(doc(db, "usuarios", user.uid), {
                 nome: nome,
                 email: email,
@@ -428,20 +442,27 @@ if (btnRegistrar) {
             });
 
             alert("Conta criada com sucesso!");
-            window.mostrarLogin(); // Volta para a tela de login
             
+            // Tenta voltar para a tela de login visualmente
+            if (typeof window.mostrarLogin === "function") {
+                window.mostrarLogin();
+            } else {
+                location.reload();
+            }
+
         } catch (error) {
             console.error("Erro ao cadastrar:", error);
             let mensagem = "Erro ao criar conta.";
+            
             if (error.code === 'auth/email-already-in-use') mensagem = "Este e-mail já está em uso.";
             if (error.code === 'auth/weak-password') mensagem = "A senha deve ter pelo menos 6 caracteres.";
+            if (error.code === 'auth/invalid-email') mensagem = "E-mail inválido.";
             
             alert(mensagem);
             window.logErroTelegram("Cadastro", error.message);
         }
-    });
+    };
 }
-};
 
 // Abrir Modal de Perfil
 window.abrirModalPerfil = () => {
