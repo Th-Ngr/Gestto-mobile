@@ -182,6 +182,18 @@ window.carregarDadosPerfil = async () => {
 // PWA
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/Gestto-mobile/service-worker.js', { scope: '/Gestto-mobile/' });
+        navigator.serviceWorker.register('/Gestto-mobile/service-worker.js', { scope: '/Gestto-mobile/' })
+            .then(reg => {
+                // Se houver atualização, ele avisa o Service Worker para assumir o controle agora
+                reg.onupdatefound = () => {
+                    const installingWorker = reg.installing;
+                    installingWorker.onstatechange = () => {
+                        if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            console.log('Nova versão disponível! Recarregando...');
+                            location.reload(); 
+                        }
+                    };
+                };
+            });
     });
 }
