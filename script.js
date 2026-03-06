@@ -337,9 +337,9 @@ window.salvarDadosPerfil = async () => {
 // --- PWA & INSTALAÇÃO ---
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./service-worker.js')
-            .then(reg => console.log('Service Worker registrado!', reg))
-            .catch(err => console.log('Erro ao registrar SW:', err));
+        navigator.serviceWorker.register('/Gestto-mobile/service-worker.js', { scope: '/Gestto-mobile/' })
+            .then(reg => console.log('Service Worker registrado no GitHub Pages!'))
+            .catch(err => console.log('Erro de registro:', err));
     });
 }
 
