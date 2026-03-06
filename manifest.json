@@ -5,17 +5,17 @@
   "start_url": "/Gestto-mobile/index.html",
   "scope": "/Gestto-mobile/",
   "display": "standalone",
-  "background_color": "#F8FAFC",
+  "background_color": "#FFFFF",
   "theme_color": "#20B2AA",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/1077/1077976.png",
+      "src": "icons/192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/1077/1077976.png",
+      "src": "icons/512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
