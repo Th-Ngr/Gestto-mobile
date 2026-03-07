@@ -622,3 +622,18 @@ body { background: var(--background); color: var(--text); padding-bottom: 80px; 
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
 }
+
+#banner-manutencao {
+    background-color: #ff4d4d; /* Vermelho Alerta */
+    color: white;
+    text-align: center;
+    padding: 15px;
+    font-weight: bold;
+    position: fixed; /* Ele fica fixo no topo */
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 9999;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    font-family: sans-serif;
+}

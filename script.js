@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { getFirestore, collection, addDoc, getDocs, query, where, deleteDoc, doc, setDoc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyB7ugVILO8olKtzkCJI_7BRlzY6Qe0-rCM",
@@ -12,10 +13,174 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const months = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+//const sVERSAO_LOCAL = "1.1.6"; // Mude isso manualmente no código sempre que subir um update real
 
 let regrasCategorias = []; // Armazena as regras na memória do app
 let categoriasAtivas = []; // Será preenchida ao carregar o app
 let promptInstalacao;
+let cronometroAtivo = false;
+
+// Função que "escuta" o Bot de Suporte
+onSnapshot(doc(db, "configuracoes", "sistema"), (snapshot) => {
+    const banner = document.getElementById("banner-admin");
+    const texto = document.getElementById("txt-admin");
+
+    if (snapshot.exists()) {
+        const dados = snapshot.data();
+        if (dados.emManutencao === true) {
+            // Se o Bot ativou, mostra o banner e o texto
+            banner.style.display = "block";
+            texto.innerText = dados.mensagem;
+            // Opcional: empurra o conteúdo para baixo para não cobrir o menu
+            document.body.style.marginTop = "50px"; 
+        } else {
+            // Se o Bot limpou, esconde tudo
+            banner.style.display = "none";
+            document.body.style.marginTop = "0px";
+        }
+    }
+});
+// Função que atualiza a versão do service-worker e força o reload 
+// do app quando o admin subir uma nova versão no Firebase.
+onSnapshot(doc(db, "configuracoes", "sistema"), (snapshot) => {
+    if (snapshot.exists()) {
+        const dados = snapshot.data();
+        
+        // 1. SINCRONIZAÇÃO INICIAL (Onde o erro costuma nascer)
+        // Se não existir versão no navegador, pegamos a do banco para evitar o loop.
+        if (!localStorage.getItem('app_version')) {
+            localStorage.setItem('app_version', (dados.versaoApp || "1.0.0").trim());
+            console.log("✅ Versão sincronizada com o Firebase no primeiro acesso.");
+            return; 
+        }
+
+        // Definimos as constantes aqui dentro para não dar ReferenceError
+        const versaoNoNavegador = (localStorage.getItem('app_version') || "1.0.0").trim();
+        const versaoNoBanco = (dados.versaoApp || "").trim();
+
+        console.log(`🔎 Verificação: Local(${versaoNoNavegador}) | Banco(${versaoNoBanco})`);
+
+        // --- BLOCO A: EXIBIR O MODAL DE NOVIDADES (PÓS-RELOAD) ---
+        if (versaoNoBanco === versaoNoNavegador && localStorage.getItem('mostrar_novidades') === 'true') {
+            localStorage.removeItem('mostrar_novidades');
+
+            // Garantimos que o código espere o HTML carregar
+            const exibirModal = () => {
+                const modal = document.getElementById("modal-novidades");
+                const overlay = document.getElementById("modal-overlay");
+                const txtVersao = document.getElementById("txt-versao-modal");
+                const txtNovidades = document.getElementById("txt-novidades-modal");
+
+                if (modal && overlay) {
+                    txtVersao.innerText = `Versão: ${versaoNoBanco}`;
+                    txtNovidades.innerText = dados.novidades || "Melhorias gerais no sistema.";
+                    modal.style.display = "block";
+                    overlay.style.display = "block";
+                }
+            };
+
+            if (document.readyState === 'complete') {
+                exibirModal();
+            } else {
+                window.addEventListener('load', exibirModal);
+            }
+            return;
+        }
+
+        // --- BLOCO B: DETECTAR ATUALIZAÇÃO (TIMER) ---
+        if (versaoNoBanco !== "" && versaoNoBanco !== versaoNoNavegador) {
+            
+            if (window.atualizacaoEmCurso) return;
+            window.atualizacaoEmCurso = true;
+
+            const banner = document.getElementById("banner-admin");
+            if (banner) banner.style.display = "block";
+
+            let tempoRestante = (dados.tempoParaAtualizar || 1) * 60;
+
+            const contador = setInterval(() => {
+                tempoRestante--;
+                const txtAdmin = document.getElementById("txt-admin");
+                if (txtAdmin) txtAdmin.innerText = `Nova versão ${versaoNoBanco} disponível. Atualizando em ${tempoRestante}s...`;
+
+                if (tempoRestante <= 0) {
+                    clearInterval(contador);
+
+                    // Gravamos a versão do BANCO no local para o navegador "saber" que atualizou
+                    localStorage.setItem('app_version', versaoNoBanco);
+                    localStorage.setItem('mostrar_novidades', 'true');
+
+                    setTimeout(() => {
+                        window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
+                    }, 500);
+                }
+            }, 1000);
+        }
+    }
+});
+
+onSnapshot(doc(db, "configuracoes", "sistema"), (snapshot) => {
+    if (snapshot.exists()) {
+        const dados = snapshot.data();
+        
+        // 1. SINCRONIZAÇÃO INICIAL (Evita loop no primeiro acesso)
+        if (!localStorage.getItem('app_version')) {
+            localStorage.setItem('app_version', (dados.versaoApp || "1.0.0").trim());
+            console.log("✅ Versão inicial sincronizada.");
+            return; 
+        }
+
+        const versaoNoNavegador = localStorage.getItem('app_version').trim();
+        const versaoNoBanco = (dados.versaoApp || "").trim();
+
+        // --- BLOCO A: EXIBIR O MODAL DE NOVIDADES (PÓS-RELOAD) ---
+        if (versaoNoBanco === versaoNoNavegador && localStorage.getItem('mostrar_novidades') === 'true') {
+            localStorage.removeItem('mostrar_novidades');
+
+            // Esperamos o 'load' para garantir que o Modal já exista no DOM
+            window.addEventListener('load', () => {
+                const modal = document.getElementById("modal-novidades");
+                const overlay = document.getElementById("modal-overlay");
+                const txtVersao = document.getElementById("txt-versao-modal");
+                const txtNovidades = document.getElementById("txt-novidades-modal");
+
+                if (modal && overlay) {
+                    txtVersao.innerText = `Versão: ${versaoNoBanco}`;
+                    txtNovidades.innerText = dados.novidades || "Melhorias gerais no sistema.";
+                    
+                    modal.style.display = "block";
+                    overlay.style.display = "block";
+                }
+            });
+            return;
+        }
+
+        // --- BLOCO B: DETECTAR ATUALIZAÇÃO (BANNER + TIMER) ---
+        if (versaoNoBanco !== "" && versaoNoBanco !== versaoNoNavegador) {
+            
+            if (window.atualizacaoEmCurso) return;
+            window.atualizacaoEmCurso = true;
+
+            const banner = document.getElementById("banner-admin");
+            if (banner) banner.style.display = "block";
+
+            let tempoRestante = (dados.tempoParaAtualizar || 1) * 60;
+
+        }
+    }
+});
+
+// --- FUNÇÃO PARA FECHAR O MODAL DE NOVIDADES ---
+// Usamos window. para garantir que o HTML encontre a função
+window.fecharModalNovidades = function() {
+    const modal = document.getElementById("modal-novidades");
+    const overlay = document.getElementById("modal-overlay");
+    
+    if (modal) modal.style.display = "none";
+    if (overlay) overlay.style.display = "none";
+    
+    console.log("✅ Modal de novidades fechado pelo usuário.");
+};
 
 // --- SUPER LOG TELEGRAM (SUPORTE TÉCNICO) ---
 window.logErroTelegram = async (local, erro) => {

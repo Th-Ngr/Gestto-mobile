@@ -13,6 +13,18 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 </head>
 <body>
+<div id="banner-admin" style="display:none; background: hsl(0, 89%, 72%); color: white; text-align: center; padding: 12px; position: fixed; top: 0; width: 100%; z-index: 9999; font-weight: bold; font-family: sans-serif; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">
+    ⚠️ <span id="txt-admin"></span>
+</div>
+
+<div id="modal-novidades" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); width:90%; max-width:400px; background:white; color:#333; padding:20px; border-radius:15px; box-shadow:0 10px 30px rgba(0,0,0,0.3); z-index:10000; text-align:center; font-family:sans-serif;">
+    <h3 style="color:#2ecc71; margin-top:0;">✅ Atualizado com Sucesso!</h3>
+    <p id="txt-versao-modal" style="font-weight:bold; margin-bottom:5px;"></p>
+    <div id="txt-novidades-modal" style="background:#f9f9f9; padding:10px; border-radius:8px; font-size:14px; text-align:left; max-height:150px; overflow-y:auto; margin-bottom:20px;"></div>
+    <button onclick="fecharModalNovidades()" style="background:#2ecc71; color:white; border:none; padding:10px 30px; border-radius:20px; cursor:pointer; font-weight:bold; width:100%;">Entendido</button>
+</div>
+
+<div id="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999;"></div>
 
 <div id="auth">
     <div id="auth">
