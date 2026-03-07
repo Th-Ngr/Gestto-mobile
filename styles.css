@@ -637,3 +637,7 @@ body { background: var(--background); color: var(--text); padding-bottom: 80px; 
     box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     font-family: sans-serif;
 }
+
+#texto-novidades { 
+    white-space: pre-wrap; /* Isso faz o navegador respeitar o 'Enter' vindo do Firebase */
+}
