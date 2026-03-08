@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gestto-gh-v1.1.2'; // Versão nova para limpar o cache problemático
+const CACHE_NAME = 'gestto-gh-v1.3.1'; // Versão nova para limpar o cache problemático
 const APP_PREFIX = '/Gestto-mobile';
 
 const assets = [

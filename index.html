@@ -4,28 +4,39 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gestto Mobile</title>
+
+  <!--links para fontes, ícones e estilos-->
+
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="styles.css" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#20B2AA">
-<meta name="apple-mobile-web-app-capable" content="yes">
+
+  <!--CDN para Chart.js e SweetAlert2-->
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <!--Meta tags para PWA -->
+  <meta name="theme-color" content="#20B2AA">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+
 </head>
 <body>
-<div id="banner-admin" style="display:none; background: hsl(0, 89%, 72%); color: white; text-align: center; padding: 12px; position: fixed; top: 0; width: 100%; z-index: 9999; font-weight: bold; font-family: sans-serif; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">
+    <!--Banners de Notificações e Modais -->
+<!--<div id="banner-admin" style="display:none; background: hsl(0, 89%, 72%); color: white; text-align: center; padding: 12px; position: fixed; top: 0; width: 100%; z-index: 9999; font-weight: bold; font-family: sans-serif; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">
     ⚠️ <span id="txt-admin"></span>
-</div>
-
+</div>-->
+    <!--Modal de Novidades -->
 <div id="modal-novidades" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); width:90%; max-width:400px; background:white; color:#333; padding:20px; border-radius:15px; box-shadow:0 10px 30px rgba(0,0,0,0.3); z-index:10000; text-align:center; font-family:sans-serif;">
     <h3 style="color:#2ecc71; margin-top:0;">✅ Atualizado com Sucesso!</h3>
     <p id="txt-versao-modal" style="font-weight:bold; margin-bottom:5px;"></p>
     <div id="txt-novidades-modal" style="background:#f9f9f9; padding:10px; border-radius:8px; font-size:14px; text-align:left; max-height:150px; overflow-y:auto; margin-bottom:20px;"></div>
     <button onclick="fecharModalNovidades()" style="background:#2ecc71; color:white; border:none; padding:10px 30px; border-radius:20px; cursor:pointer; font-weight:bold; width:100%;">Entendido</button>
 </div>
-
+    <!--Overlay para modais -->
 <div id="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999;"></div>
-
+    <!--Tela de Autenticação -->
 <div id="auth">
     <div id="auth">
     <div class="auth-card-content">
@@ -53,7 +64,7 @@
     </div>
 </div>
 </div>
-
+    <!--Modal de Cadastro -->
 <div id="modalCadastro" class="modal-overlay" style="display: none;">
     <div class="quick-form">
         <h3>Cadastre-se</h3>
@@ -67,7 +78,7 @@
         </form>
     </div>
 </div>
-
+    <!--Área Principal do App (Home e Perfil) -->
 <div id="app" style="display: none;">
     <header class="header">
         <header class="header">
@@ -132,7 +143,7 @@
         </button>
         <button onclick="window.abrirGerenciadorServicos()" style="width: 100%; margin-bottom: 20px; padding: 12px; background: #f0f2f5; border: 1px solid #d1d5db; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; color: #374151; font-weight: 500;">
     <i class="fa-solid fa-briefcase"></i> Meus Serviços/Produtos
-</button>
+    </button>
       <div id="areaInteligencia" style="margin-top:20px; padding:15px; background:#f0f9ff; border-radius:10px; border:1px solid #bae6fd;">
     <h4 style="font-size:13px; color:#0369a1;">💡 Inteligência de Categorias</h4>
     <p style="font-size:11px; margin-bottom:10px;">Clique abaixo para encontrar padrões nas suas descrições e organizar o gráfico.</p>
@@ -152,7 +163,7 @@
         <button class="nav-item" id="btnConfiguracoes" onclick="navegar('perfil')">Perfil</button>
     </nav>
 </div>
-
+    <!--Modal de Edição Rápida -->
 <div id="editModal" class="modal-overlay" style="display:none;">
     <div class="modal-content" style="background:white; width:100%; max-width:400px; border-radius:15px; padding:20px;">
         <h3 style="margin-bottom:20px;">Editar Lançamento</h3>
@@ -179,6 +190,7 @@
         </div>
     </div>
 </div>
+    <!--Banner de Instalação da PWA-->
 <div id="installBanner">
     <div class="install-content">
         <div class="install-icon">
@@ -194,12 +206,18 @@
         </div>
     </div>
 </div>
+    <!--Modal de Novo Lançamento -->
 <div id="modalNovo" class="modal-overlay" style="display: none;">
     <div class="modal-content">
         <div class="modal-header">
             <h3>Novo Lançamento</h3>
             <button class="close-btn" onclick="window.fecharModalNovo()">&times;</button>
         </div>
+            <div class="tipo-selector">
+            <button type="button" id="btnTipoE" class="btn-tipo active" onclick="window.setTipo('entrada')">Entrada</button>
+            <button type="button" id="btnTipoS" class="btn-tipo" onclick="window.setTipo('saida')">Saída</button>
+            </div>
+
         <div class="form-group"><input type="text" id="cliente" required><label>Cliente/Origem</label></div>
         <div class="form-group">
     <input type="text" id="descricao" list="listaSugestoesServicos" oninput="window.verificarSugestaoServico(this.value)" required>
@@ -209,11 +227,6 @@
         <div class="form-group"><input type="number" id="valor" required><label>Valor</label></div>
         <div class="form-group"><input type="date" id="data" required><label>Data</label></div>
         
-        <div class="tipo-selector">
-            <button type="button" id="btnTipoE" class="btn-tipo active" onclick="window.setTipo('entrada')">Entrada</button>
-            <button type="button" id="btnTipoS" class="btn-tipo" onclick="window.setTipo('saida')">Saída</button>
-        </div>
-
         <div class="fixa-row">
             <input type="checkbox" id="isFixa">
             <label for="isFixa">Lançamento Fixo Mensal?</label>
@@ -223,6 +236,7 @@
         <button class="primary-btn" onclick="window.addLancamento()">Confirmar</button>
     </div>
 </div>
+    <!--Modal de Configurações do Perfil -->
 <div id="modalPerfil" class="modal-overlay" style="display: none;">
     <div class="modal-content">
         <div class="modal-header">
@@ -256,7 +270,7 @@
         </button>
     </div>
 </div>
-
+    <!--Modal de Gerenciamento de Gastos Fixos e Serviços -->
 <div id="modalGerenciadorFixos" class="modal-overlay" style="display:none; z-index: 1001;">
     <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
         <div class="modal-header">
@@ -277,6 +291,7 @@
             </div>
     </div>
 </div>
+    <!--Modal de Gerenciamento de Serviços/Produtos -->
 <div id="modalGerenciadorServicos" class="modal-overlay" style="display:none; z-index: 1002;">
     <div class="modal-content">
         <div class="modal-header">
@@ -291,6 +306,57 @@
         <div id="listaServicosSalvos"></div>
     </div>
 </div>
+<!--Drawer de Configurações Rápidas -->
+<div id="drawerPerfil" class="drawer">
+    <div class="drawer-header">
+        <h3><i class="fa-solid fa-gear"></i> Configurações</h3>
+        <button onclick="window.fecharDrawer()" class="close-btn" style="color: #F8FAFC;">&times;</button>
+    </div>
+    
+    <div class="drawer-body">
+    <div class="profile-summary">
+        <i class="fa-solid fa-circle-user"></i>
+        <p id="displayEmail">usuario@email.com</p>
+    </div>
+
+    <button onclick="window.toggleEdicao()" class="btn-secondary-drawer">
+        <i class="fa-solid fa-user-pen"></i> Editar Perfil 
+        <i class="fa-solid fa-chevron-down" style="float:right; font-size: 10px; margin-top:5px;"></i>
+    </button>
+
+    <div id="secaoEdicao" class="acordion-content">
+        <div class="input-group-drawer">
+            <label>Nome Completo</label>
+            <input type="text" id="editNome">
+        </div>
+        <div class="input-group-drawer">
+            <label>Nome da Empresa</label>
+            <input type="text" id="editEmpresa">
+        </div>
+        <div class="input-group-drawer">
+            <label>Contato (WhatsApp)</label>
+            <input type="text" id="editContato">
+        </div>
+        <button onclick="window.salvarDadosPerfil()" class="btn-save-drawer">
+            <i class="fa-solid fa-check"></i> Confirmar Alterações
+        </button>
+    </div>
+
+    <div class="drawer-footer-actions">
+        <button onclick="window.abrirTutorial()" class="btn-secondary-drawer">
+            <i class="fa-solid fa-book"></i> Tutorial do Sistema
+        </button>
+        <button onclick="window.contatarSuporte()" class="btn-secondary-drawer">
+            <i class="fa-solid fa-headset"></i> Suporte Técnico
+        </button>
+        <button onclick="window.logout()" class="btn-logout-drawer">
+            <i class="fa-solid fa-right-from-bracket"></i> Sair da Conta
+        </button>
+    </div>
+</div>
+</div>
+
+<div id="overlay" onclick="window.fecharDrawer()"></div>         
 <script type="module" src="script.js"></script>
 </body>
 </html>

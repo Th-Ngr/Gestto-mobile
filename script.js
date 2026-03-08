@@ -13,7 +13,32 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const months = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-//const sVERSAO_LOCAL = "1.1.6"; // Mude isso manualmente no código sempre que subir um update real
+const Toast = Swal.mixin({
+    toast: true,
+    position: 'top-end',
+    showConfirmButton: false,
+    timer: 3000,
+    timerProgressBar: true,
+    backdrop: false,
+    didOpen: (toast) => {
+        toast.onmouseenter = Swal.stopTimer;
+        toast.onmouseleave = Swal.resumeTimer;
+    }
+});
+
+// Toast para Avisos do Sistema / Telegram
+const AlertToast = Swal.mixin({
+    toast: true,
+    position: 'top', // Centro-topo para máxima visibilidade
+    showConfirmButton: false,
+    timer: 5000,
+    timerProgressBar: true,
+    backdrop: false,
+    customClass: {
+        popup: 'toast-sistema-alert'
+    }
+});
+
 
 let regrasCategorias = []; // Armazena as regras na memória do app
 let categoriasAtivas = []; // Será preenchida ao carregar o app
@@ -22,26 +47,63 @@ let cronometroAtivo = false;
 
 // Função que "escuta" o Bot de Suporte
 onSnapshot(doc(db, "configuracoes", "sistema"), (snapshot) => {
-    const banner = document.getElementById("banner-admin");
-    const texto = document.getElementById("txt-admin");
-
     if (snapshot.exists()) {
         const dados = snapshot.data();
-        if (dados.emManutencao === true) {
-            // Se o Bot ativou, mostra o banner e o texto
-            banner.style.display = "block";
-            texto.innerText = dados.mensagem;
-            // Opcional: empurra o conteúdo para baixo para não cobrir o menu
-            document.body.style.marginTop = "50px"; 
+        const versaoNoFirebase = dados.versaoApp;
+        const versaoNoCache = localStorage.getItem("versao_cache");
+
+        // 1. LIMPEZA INICIAL: Se algo mudar, fechamos o que estava aberto para reavaliar
+        // Isso evita que o banner de manutenção "vire" o de atualização sem resetar o timer
+        
+         if (dados.emManutencao === true) {
+            Swal.fire({
+                toast: true, position: 'top', icon: 'warning',
+                title: 'MANUTENÇÃO ATIVA', text: dados.mensagem,
+                timer: null, showConfirmButton: false, backdrop: false,
+                customClass: { popup: 'banner-manutencao-fixo' }
+            });
+            
+        }
+
+         
+        if (versaoNoCache !== versaoNoFirebase) {
+            let segundosRestantes = 60;
+
+            Swal.fire({
+                toast: true,
+                position: 'top',
+                icon: 'info',
+                title: `Nova versão ${versaoNoFirebase} disponível`,
+                html: `Atualizando em <b>${segundosRestantes}</b> segundos...<br><small>${dados.mensagemUpdate || ''}</small>`,
+                timer: 60000,
+                timerProgressBar: true,
+                showConfirmButton: false,
+                backdrop: false,
+                customClass: { popup: 'banner-atualizacao-minuto' },
+                didOpen: () => {
+                    const b = Swal.getHtmlContainer().querySelector('b');
+                    const timerInterval = setInterval(() => {
+                        segundosRestantes--;
+                        if (b) b.textContent = segundosRestantes;
+                        if (segundosRestantes <= 0) {
+                            clearInterval(timerInterval);
+                            // Salva a nova versão no cache ANTES de recarregar
+                            localStorage.setItem("versao_cache", versaoNoFirebase);
+                            window.location.reload(); // Recarrega a página
+                        }
+                    }, 1000);
+                }
+            });
         } else {
-            // Se o Bot limpou, esconde tudo
-            banner.style.display = "none";
-            document.body.style.marginTop = "0px";
+            // Se as versões forem iguais, garantimos que não há Toasts de atualização abertos
+            // Mas cuidado para não fechar outros Toasts legítimos! 
+            // Se quiser ser específico, use uma verificação de classe.
         }
     }
 });
-// Função que atualiza a versão do service-worker e força o reload 
-// do app quando o admin subir uma nova versão no Firebase.
+
+
+// Função que atualiza a versão do service-worker e força o reload do app quando o admin subir uma nova versão no Firebase.
 onSnapshot(doc(db, "configuracoes", "sistema"), (snapshot) => {
     if (snapshot.exists()) {
         const dados = snapshot.data();
@@ -170,6 +232,8 @@ onSnapshot(doc(db, "configuracoes", "sistema"), (snapshot) => {
     }
 });
 
+
+
 // --- FUNÇÃO PARA FECHAR O MODAL DE NOVIDADES ---
 // Usamos window. para garantir que o HTML encontre a função
 window.fecharModalNovidades = function() {
@@ -182,57 +246,81 @@ window.fecharModalNovidades = function() {
     console.log("✅ Modal de novidades fechado pelo usuário.");
 };
 
-// --- SUPER LOG TELEGRAM (SUPORTE TÉCNICO) ---
+// ---LOG TELEGRAM (SUPORTE TÉCNICO) ---
 window.logErroTelegram = async (local, erro) => {
     const TOKEN = "8735026345:AAGLIG0AGlP5CfaFVEGuGb0cVU0IyUCbPNo";
     const CHAT_ID = "8125669194";
     
-        let infoUsuario = "Não logado";
-    let infoEmpresa = "N/A";
+    let infoUsuario = "Não logado";
+    if (auth.currentUser) infoUsuario = auth.currentUser.email;
 
-    if (auth.currentUser) {
-        try {
-            const userSnap = await getDoc(doc(db, "usuarios", auth.currentUser.uid));
-            if (userSnap.exists()) {
-                const d = userSnap.data();
-                infoUsuario = `${d.nome || 'Sem Nome'} (${auth.currentUser.email})`;
-                infoEmpresa = d.empresa || "Não informada";
-            } else {
-                infoUsuario = auth.currentUser.email;
-            }
-        } catch (e) {
-            infoUsuario = auth.currentUser.email + " (Erro ao buscar perfil)";
+    const erroTexto = erro instanceof Error ? erro.message : String(erro);
+    const novoErro = {
+        local: local,
+        erro: erroTexto,
+        usuario: infoUsuario,
+        data: new Date().toISOString()
+    };
+
+    // --- GRAVAR EM: configuracoes -> Log_erros ---
+    try {
+        const logRef = doc(db, "configuracoes", "Log_erros");
+        const docSnap = await getDoc(logRef);
+
+        if (docSnap.exists()) {
+            // Se já existe, pegamos a lista atual, adicionamos o novo no topo e mantemos apenas os 10 últimos
+            let listaAtual = docSnap.data().erros || [];
+            listaAtual.unshift(novoErro); 
+            listaAtual = listaAtual.slice(0, 10); 
+
+            await updateDoc(logRef, { erros: listaAtual });
+        } else {
+            // Se não existe, cria o documento com o primeiro erro
+            await setDoc(logRef, { erros: [novoErro] });
         }
+        console.log("✅ Log armazenado em configuracoes/Log_erros");
+    } catch (e) {
+        console.error("Erro ao salvar no Firestore:", e);
     }
 
-    const mensagemHTML = `
-    <b>🔴 ERRO CRÍTICO NO SISTEMA</b>
-    ______________________________
-    <b>📍 Local:</b> ${local}
-    <b>❌ Erro:</b> ${erro}
-
-    <b>👤 Usuário:</b> ${infoUsuario}
-    <b>🏢 Empresa:</b> ${infoEmpresa}
-    <b>📱 Device:</b> ${navigator.userAgent.slice(0, 60)}
-_______________________________
-    `;
-
+    // --- ENVIO PARA O TELEGRAM ---
+    const mensagemHTML = `<b>🔴 ERRO DETECTADO</b>\n<b>📍 Local:</b> ${local}\n<b>❌ Erro:</b> ${erroTexto}`;
     try {
         await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ chat_id: CHAT_ID, text: mensagemHTML, parse_mode: "HTML" })
         });
-    } catch (e) { console.error("Falha ao enviar log:", e); }
+    } catch (e) { console.error("Erro Telegram:", e); }
 };
-
-// --- CONTROLO DO APP & AUTH ---
+// --- CONTROLE DO APP & AUTH ---
 onAuthStateChanged(auth, async (user) => { // Adicionado async aqui
     if (user) { 
         document.getElementById("auth").style.display = "none"; 
         document.getElementById("app").style.display = "block"; 
         configurarMeses(); 
         carregarLancamentos(); 
+
+        const inputDesc = document.getElementById("descricao");
+        if (inputDesc) {
+            // Removemos listeners antigos para não duplicar chamadas
+            inputDesc.replaceWith(inputDesc.cloneNode(true)); 
+            const novoInputDesc = document.getElementById("descricao");
+            
+            novoInputDesc.addEventListener("blur", async (e) => {
+                const termo = e.target.value.trim();
+                const tipo = document.getElementById("tipo").value;
+                
+                if (termo.length < 3) return; // Só busca se tiver mais de 2 letras
+
+                if (tipo === "entrada") {
+                    await window.verificarServicoInteligente(termo);
+                } else {
+                    await window.verificarGastoFixoInteligente(termo);
+                }
+            });
+        }
+    
 
         try {
             // CORREÇÃO: Criando a variável snapRegras que estava faltando
@@ -320,7 +408,6 @@ window.setTipo = (t) => {
 };
 
 window.addLancamento = async () => {
-    // 1. Captura dos elementos do formulário
     const descricao = document.getElementById("descricao").value;
     const valorInput = document.getElementById("valor").value;
     const valor = parseFloat(valorInput) || 0;
@@ -330,14 +417,13 @@ window.addLancamento = async () => {
     const mesSelecionado = document.getElementById("monthSelect").value;
     const isFixa = document.getElementById("isFixa").checked;
 
-    // Validação básica
-    if (!descricao || !valor || !dataBase) return alert("Preencha Descrição, Valor e Data.");
+    if (!descricao || !valor || !dataBase) {
+        return Swal.fire('Atenção', 'Preencha Descrição, Valor e Data.', 'warning');
+    }
 
     try {
         const uid = auth.currentUser.uid;
-
-        // --- A MÁGICA DA AUTOMAÇÃO ---
-        // Aqui chamamos a função que criamos para descobrir a categoria baseada nas regras
+        // IDENTIFICAÇÃO DA CATEGORIA (Resolve o erro do gráfico)
         const categoriaIdentificada = window.identificarCategoriaPelaDescricao(descricao);
 
         const novo = { 
@@ -350,51 +436,43 @@ window.addLancamento = async () => {
             isFixa, 
             mes: mesSelecionado, 
             status: "Pago",
-            categoria: categoriaIdentificada // Salva a categoria (ex: "Aluguel", "Vendas", ou "Geral")
+            categoria: categoriaIdentificada 
         };
         
-        // 1. Salva o lançamento no mês atual
         await addDoc(collection(db, "lancamentos"), novo);
 
-        // 2. Lógica para Lançamentos Fixos
         if (isFixa) {
-            // Salva como Modelo no Gerenciador para aparecer no botão "Gerenciar Gastos"
-            await addDoc(collection(db, "modelos_fixos"), {
-                uid: uid,
-                nome: descricao,
-                valor: valor,
-                dia: parseInt(dataBase.split('-')[2]), // Extrai o dia (DD) da data (AAAA-MM-DD)
-                categoria: categoriaIdentificada,
-                dataCriacao: new Date()
-            });
+    await addDoc(collection(db, "modelos_fixos"), {
+        uid: uid, // Use 'uid' para manter o padrão da busca inteligente
+        nome: descricao,
+        valor: valor,
+        dia: parseInt(dataBase.split('-')[2]),
+        categoria: categoriaIdentificada,
+        dataCriacao: new Date()
+    });
 
-            // Réplica para os meses restantes do ano corrente
+
             let indice = months.indexOf(mesSelecionado);
             for (let i = indice + 1; i < months.length; i++) {
-                await addDoc(collection(db, "lancamentos"), { 
-                    ...novo, 
-                    mes: months[i] 
-                });
+                await addDoc(collection(db, "lancamentos"), { ...novo, mes: months[i] });
             }
         }
         
-        // Limpeza e Atualização da Tela
-        document.getElementById("descricao").value = "";
-        document.getElementById("valor").value = "";
-        document.getElementById("cliente").value = "";
-        document.getElementById("isFixa").checked = false;
-        
         window.fecharModalNovo();
-        window.carregarLancamentos(); // Recarrega a lista
-        window.atualizarGraficosBarras(); // Atualiza o gráfico com a nova barra de categoria
+        window.carregarLancamentos();
         
-        alert(isFixa ? "Lançamento Fixo replicado com sucesso!" : "Lançamento salvo com sucesso!");
+        // FEEDBACK COM TOAST
+        Toast.fire({
+            icon: 'success',
+            title: isFixa ? 'Lançamento Fixo Replicado!' : 'Salvo com sucesso!'
+        });
 
     } catch (e) { 
-        window.logErroTelegram("addLancamento_Automatizado", e.message); 
-        console.error("Erro ao salvar:", e);
+        window.logErroTelegram("addLancamento", e.message); 
+        Swal.fire('Erro', 'Falha ao guardar registro.', 'error');
     }
 };
+
 window.prepararEdicao = async (id) => {
     const docSnap = await getDoc(doc(db, "lancamentos", id));
     if (docSnap.exists()) {
@@ -426,55 +504,51 @@ window.salvarEdicao = async () => {
 };
 
 window.fecharModal = () => document.getElementById("editModal").style.display = "none";
+
 window.deletar = async (id) => {
     try {
         const docRef = doc(db, "lancamentos", id);
         const docSnap = await getDoc(docRef);
-        
         if (!docSnap.exists()) return;
         const item = docSnap.data();
 
-        let excluirTudo = false;
-        if (item.isFixa) {
-            excluirTudo = confirm(`"${item.descricao}" é um lançamento fixo. Deseja excluir também as repetições dos meses seguintes?`);
-        } else {
-            if (!confirm("Deseja eliminar este registo?")) return;
-        }
+        const result = await Swal.fire({
+            title: 'Excluir registro?',
+            text: item.isFixa ? `"${item.descricao}" é fixo. Apagar apenas este ou todos os meses futuros?` : "Deseja excluir este registro?",
+            icon: 'warning',
+            showCancelButton: true,
+            showDenyButton: item.isFixa,
+            confirmButtonText: item.isFixa ? 'Apagar todos os meses' : 'Sim, excluir',
+            denyButtonText: 'Apagar apenas este',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#d33'
+        });
 
-        if (excluirTudo) {
-            // 1. Identifica o índice do mês atual
-            const indiceMesAtual = months.indexOf(item.mes);
-            const mesesParaApagar = months.slice(indiceMesAtual);
+        if (result.isDismissed) return;
 
-            // 2. Busca todos os lançamentos iguais deste usuário nos meses seguintes
-            const q = query(
-                collection(db, "lancamentos"), 
-                where("userId", "==", auth.currentUser.uid),
-                where("descricao", "==", item.descricao),
-                where("valor", "==", item.valor)
-            );
-
+        if (result.isConfirmed && item.isFixa) {
+            // Deleção em massa
+            const mesesParaApagar = months.slice(months.indexOf(item.mes));
+            const q = query(collection(db, "lancamentos"), where("userId", "==", auth.currentUser.uid), where("descricao", "==", item.descricao));
             const querySnapshot = await getDocs(q);
             
-            // 3. Deleta apenas os que pertencem ao mês atual ou meses futuros
-            const deletarPromises = [];
+            const promises = [];
             querySnapshot.forEach((d) => {
                 if (mesesParaApagar.includes(d.data().mes)) {
-                    deletarPromises.push(deleteDoc(doc(db, "lancamentos", d.id)));
+                    promises.push(deleteDoc(doc(db, "lancamentos", d.id)));
                 }
             });
-
-            await Promise.all(deletarPromises);
-            alert("Lançamento e repetições futuras excluídas.");
+            await Promise.all(promises);
+            Toast.fire({ icon: 'success', title: 'Gasto fixo removido do calendário.' });
         } else {
-            // Exclusão simples (apenas o registro clicado)
+            // Deleção simples
             await deleteDoc(docRef);
+            Toast.fire({ icon: 'success', title: 'Registro excluído.' });
         }
 
-        window.carregarLancamentos(); // Atualiza a lista na tela
+        window.carregarLancamentos();
     } catch (e) {
-        window.logErroTelegram("deletar_Cascata", e.message);
-        console.error(e);
+        window.logErroTelegram("deletar", e.message);
     }
 };
 
@@ -532,51 +606,75 @@ window.instalarPWA = async () => {
 
 // --- UTILITÁRIOS ---
 window.logout = async () => {
-    try {
-        // 1. Desloga do Firebase
-        await signOut(auth);
-        
-        // 2. Esconde todos os modais e seções que podem estar abertas
-        const modais = ["modalPerfil", "perfilSection", "modalNovo", "modalGerenciadorFixos", "modalGerenciadorServicos"];
-        modais.forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.style.display = "none";
-        });
+    // 1. Fechar o menu lateral IMEDIATAMENTE para não atrapalhar o pop-up
+    window.fecharDrawer();
 
-        // 3. Garante que a tela de login apareça e o app suma
-        document.getElementById("auth").style.display = "flex"; 
-        document.getElementById("app").style.display = "none";
+    // 2. Agora mostramos o pop-up de confirmação
+    const result = await Swal.fire({
+        title: 'Sair do Gestto?',
+        text: "Você precisará fazer login novamente.",
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Sim, sair!',
+        cancelButtonText: 'Cancelar'
+    });
 
-        // Opcional: Recarregar a página limpa qualquer lixo da memória
-        // location.reload(); 
-        
-    } catch (e) {
-        window.logErroTelegram("Logout", e.message);
+    if (result.isConfirmed) {
+        try {
+            await signOut(auth);
+            window.location.reload();
+        } catch (error) {
+            window.logErroTelegram("Erro_Logout", error.message);
+            Swal.fire('Erro', 'Não foi possível sair.', 'error');
+        }
     }
 };
+
 window.toggleSecao = (id, header) => { 
     document.getElementById(id).classList.toggle('hidden'); 
     header.classList.toggle('closed'); 
 };
 
-// ==========================================
-// EVENTOS DE AUTENTICAÇÃO (LOGIN / CADASTRO)
-// ==========================================
 
 // 1. LÓGICA DE LOGIN
+// Substitua o seubtnLogin.onclick por este:
 document.getElementById("btnLogin").onclick = async () => {
     const email = document.getElementById("email").value;
     const pass = document.getElementById("password").value;
-    
+
+    if (!email || !pass) {
+        return Swal.fire('Ops!', 'Preencha e-mail e senha.', 'warning');
+    }
+
+    // Mostrar carregando
+    Swal.fire({
+        title: 'Autenticando...',
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); }
+    });
+
     try {
         await signInWithEmailAndPassword(auth, email, pass);
-        // O onAuthStateChanged cuidará de mostrar a tela do app
-    } catch (e) {
-        alert("Erro no login: " + e.message);
-        window.logErroTelegram("Login", e.message);
+        Swal.close(); // Fecha o carregando ao entrar
+    } catch (error) {
+        window.logErroTelegram("Tela de Login", error.message);
+        
+        // Tradução amigável de erros comuns do Firebase
+        let mensagem = "Erro ao tentar entrar.";
+        if (error.code === 'auth/invalid-credential') mensagem = "E-mail ou senha incorretos.";
+        if (error.code === 'auth/user-not-found') mensagem = "Usuário não encontrado.";
+        if (error.code === 'auth/wrong-password') mensagem = "Senha incorreta.";
+
+        Swal.fire({
+            icon: 'error',
+            title: 'Falha no Acesso',
+            text: mensagem,
+            confirmButtonColor: '#d33'
+        });
     }
 };
-
 // 2. LÓGICA DE CADASTRO
 const btnRegistrar = document.getElementById("btnRegistrar");
 
@@ -630,17 +728,49 @@ if (btnRegistrar) {
 }
 
 // Abrir Modal de Perfil
-window.abrirModalPerfil = () => {
-    const modal = document.getElementById("modalPerfil");
-    if (modal) {
-        modal.style.display = "flex";
-        window.carregarDadosPerfil(); // Busca dados atualizados do Firebase
+// --- CONTROLE DA INTERFACE ---
+
+window.abrirModalPerfil = async () => {
+    // Busca dados atuais do usuário
+    const snap = await getDoc(doc(db, "usuarios", auth.currentUser.uid));
+    if (snap.exists()) {
+        const d = snap.data();
+        document.getElementById("editNome").value = d.nome || "";
+        document.getElementById("editEmpresa").value = d.empresa || "";
+        document.getElementById("editContato").value = d.contato || "";
+        document.getElementById("displayEmail").innerText = auth.currentUser.email;
     }
+    
+    // Mostra o Drawer e o Overlay
+    document.getElementById("drawerPerfil").classList.add("active");
+    document.getElementById("overlay").style.display = "block";
 };
 
-window.fecharModalPerfil = () => {
-    const modal = document.getElementById("modalPerfil");
-    if (modal) modal.style.display = "none";
+window.fecharDrawer = () => {
+    document.getElementById("drawerPerfil").classList.remove("active");
+    document.getElementById("overlay").style.display = "none";
+};
+
+// --- NOVAS FUNÇÕES DE APOIO ---
+
+window.abrirTutorial = () => {
+    Swal.fire({
+        title: '📖 Como usar o Gestto',
+        html: `
+            <div style="text-align: left; font-size: 14px;">
+                <p><b>1. Lançamentos:</b> Registre suas entradas e saídas diárias.</p>
+                <p><b>2. Gastos Fixos:</b> Marque "Fixo" para que o sistema repita o gasto nos meses seguintes automaticamente.</p>
+                <p><b>3. Categorias:</b> O sistema classifica seus gastos pela descrição (ex: "Aluguel" vai para moradia).</p>
+            </div>
+        `,
+        icon: 'info',
+        confirmButtonText: 'Entendi!'
+    });
+};
+
+window.contatarSuporte = () => {
+    const msg = encodeURIComponent("Olá! Preciso de ajuda com o aplicativo Gestto.");
+    window.open(`https://wa.me/55219XXXXXXXX?text=${msg}`, '_blank'); // Substitua pelo seu número
 };
 
 // Carregar Dados do Perfil do Firebase
@@ -679,30 +809,68 @@ window.salvarDadosPerfil = async () => {
     const empresa = document.getElementById("editEmpresa").value;
     const contato = document.getElementById("editContato").value;
 
-    if (!nome || !empresa) return alert("Por favor, preencha Nome e Empresa.");
+    // 1. Validação Visual com SweetAlert
+    if (!nome || !empresa) {
+        return Swal.fire({
+            icon: 'warning',
+            title: 'Campos Obrigatórios',
+            text: 'Por favor, preencha o Nome e a Empresa.',
+            confirmButtonColor: 'var(--primary)'
+        });
+    }
+
+    // 2. Mostrar estado de "Carregando"
+    Swal.fire({
+        title: 'A guardar alterações...',
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); }
+    });
 
     try {
-        const dados = {
+        const user = auth.currentUser;
+        if (!user) throw new Error("Usuário não autenticado.");
+
+        // 3. Gravação no Firestore
+        await setDoc(doc(db, "usuarios", user.uid), {
             nome: nome,
             empresa: empresa,
             contato: contato,
-            email: auth.currentUser.email,
-            ultimaAtualizacao: new Date()
-        };
+            email: user.email,
+            ultimaAtualizacao: new Date().toISOString()
+        }, { merge: true });
 
-        await setDoc(doc(db, "usuarios", auth.currentUser.uid), dados, { merge: true });
+        // 4. Sucesso: Fecha o carregando e mostra o Toast
+        Swal.close();
         
-        alert("Perfil atualizado!");
-        
-        // Atualiza a interface sem precisar recarregar a página
-        if (document.getElementById("perfilNomeExibicao")) {
-            document.getElementById("perfilNomeExibicao").innerText = nome;
+        // Fecha o acordeão e o menu lateral
+        if(document.getElementById("secaoEdicao")) {
+            document.getElementById("secaoEdicao").classList.remove("aberto");
         }
+        window.fecharDrawer();
+
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true
+        });
+
+        Toast.fire({
+            icon: 'success',
+            title: 'Perfil atualizado com sucesso!'
+        });
+
+    } catch (error) {
+        // 5. Erro: Log no Telegram e aviso visual
+        window.logErroTelegram("Salvar_Perfil", error.message);
         
-        window.fecharModalPerfil();
-    } catch (e) {
-        window.logErroTelegram("salvarDadosPerfil", e.message);
-        alert("Erro ao salvar. O suporte foi avisado.");
+        Swal.fire({
+            icon: 'error',
+            title: 'Erro ao Salvar',
+            text: 'Não foi possível atualizar o perfil. O erro foi enviado ao suporte.',
+            confirmButtonColor: '#d33'
+        });
     }
 };
 // --- GESTÃO DE MODELOS FIXOS ---
@@ -780,17 +948,51 @@ window.carregarModelosFixos = async function() {
     }
 };
 
-// Excluir Modelo
-window.excluirModeloFixo = async function(id) {
-    if (confirm("Deseja apagar este modelo fixo?")) {
+// EXCLUIR MODELO FIXO
+window.excluirModeloFixo = async (id) => {
+    const result = await Swal.fire({
+        title: 'Remover Modelo?',
+        text: "Novos meses não serão mais gerados automaticamente.",
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Remover',
+        cancelButtonText: 'Manter'
+    });
+
+    if (result.isConfirmed) {
         try {
             await deleteDoc(doc(db, "modelos_fixos", id));
             await window.carregarModelosFixos();
+            Toast.fire({ icon: 'success', title: 'Modelo fixo removido.' });
         } catch (e) {
             window.logErroTelegram("excluirModeloFixo", e.message);
         }
     }
 };
+
+// EXCLUIR SERVIÇO
+window.excluirServico = async (id) => {
+    const result = await Swal.fire({
+        title: 'Excluir serviço?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Excluir',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if (result.isConfirmed) {
+        try {
+            await deleteDoc(doc(db, "servicos", id));
+            window.carregarServicos();
+            window.atualizarDatalistServicos();
+            Toast.fire({ icon: 'success', title: 'Serviço deletado.' });
+        } catch (e) {
+            window.logErroTelegram("excluirServico", e.message);
+        }
+    }
+};
+
+
 
 window.lancarModeloNoMes = async (nome, valor, dia) => {
     const user = auth.currentUser;
@@ -919,7 +1121,98 @@ onAuthStateChanged(auth, async (user) => {
         const perfil = document.getElementById("perfilSection");
         if(perfil) perfil.style.display = "none";
     }
+
 });
+
+// INTELIGÊNCIA PARA ENTRADAS (SERVIÇOS)
+window.verificarServicoInteligente = async (nomeOriginal) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const nomeBusca = nomeOriginal.toLowerCase().trim();
+    
+    // Busca todos os serviços do usuário logado
+    const q = query(collection(db, "servicos"), where("uid", "==", user.uid));
+    const snap = await getDocs(q);
+
+    // Procura na lista ignorando maiúsculas/minúsculas
+    const servicoExistente = snap.docs.find(d => 
+        d.data().nome.toLowerCase() === nomeBusca
+    );
+
+    if (servicoExistente) {
+        const dados = servicoExistente.data();
+        document.getElementById("valor").value = dados.valor;
+        // Feedback visual
+        document.getElementById("valor").style.backgroundColor = "#e8f5e9";
+        setTimeout(() => document.getElementById("valor").style.backgroundColor = "", 1500);
+        Toast.fire({ icon: 'info', title: `Serviço "${dados.nome}" reconhecido!` });
+    } else {
+        // Se não encontrar, sugere cadastrar (conforme sua solicitação)
+        const res = await Swal.fire({
+            title: 'Novo Serviço?',
+            text: `Deseja salvar "${nomeOriginal}" como um serviço padrão?`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sim, salvar'
+        });
+
+        if (res.isConfirmed) {
+            const { value: valor } = await Swal.fire({
+                title: 'Valor padrão:',
+                input: 'number',
+                inputLabel: 'R$',
+                showCancelButton: true
+            });
+            if (valor) {
+                await addDoc(collection(db, "servicos"), {
+                    uid: user.uid,
+                    nome: nomeOriginal,
+                    valor: parseFloat(valor)
+                });
+                document.getElementById("valor").value = valor;
+                Toast.fire({ icon: 'success', title: 'Serviço cadastrado!' });
+            }
+        }
+    }
+};
+
+// INTELIGÊNCIA PARA SAÍDAS (GASTOS FIXOS)
+window.verificarGastoFixoInteligente = async (nomeOriginal) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const nomeBusca = nomeOriginal.toLowerCase().trim();
+    
+    // Busca na coleção modelos_fixos
+    const q = query(collection(db, "modelos_fixos"), where("uid", "==", user.uid));
+    const snap = await getDocs(q);
+
+    const fixoExistente = snap.docs.find(d => 
+        d.data().nome.toLowerCase() === nomeBusca
+    );
+
+    if (fixoExistente) {
+        const dados = fixoExistente.data();
+        document.getElementById("valor").value = dados.valor;
+        document.getElementById("isFixa").checked = true; // Marca como fixo automaticamente
+        
+        document.getElementById("valor").style.backgroundColor = "#e8f5e9";
+        setTimeout(() => document.getElementById("valor").style.backgroundColor = "", 1500);
+        Toast.fire({ icon: 'info', title: `Gasto Fixo reconhecido!` });
+    } else {
+        const res = await Swal.fire({
+            title: 'Tornar Gasto Fixo?',
+            text: `Deseja registrar "${nomeOriginal}" como recorrente?`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sim'
+        });
+        if (res.isConfirmed) {
+            document.getElementById("isFixa").checked = true;
+        }
+    }
+};
 
 let instanciaEntradas = null;
 let instanciaSaidas = null;
@@ -1166,3 +1459,18 @@ if (isIOS && !isStandalone) {
     // "Para instalar, clique no ícone de compartilhar e 'Adicionar à Tela de Início'"
     console.log("Dica: No iPhone, instale via menu de compartilhamento do Safari.");
 }
+
+window.toggleEdicao = () => {
+    const secao = document.getElementById("secaoEdicao");
+    secao.classList.toggle("aberto");
+    
+    // Opcional: Rotacionar o ícone de seta (se você quiser dar um toque extra)
+    const seta = document.querySelector(".fa-chevron-down");
+    if (secao.classList.contains("aberto")) {
+        seta.style.transform = "rotate(180deg)";
+    } else {
+        seta.style.transform = "rotate(0deg)";
+    }
+};
+
+
