@@ -13,7 +13,7 @@
   margin: 0;
   padding: 0;
   font-family: 'Inter', sans-serif;
-}
+} 
 
 body {
   background: var(--background);
@@ -21,8 +21,7 @@ body {
   padding-bottom: 80px;
 }
 
-/* HEADER */
-
+      /* HEADER */
 .header {
   position: sticky;
   top: 0;
@@ -31,29 +30,27 @@ body {
   text-align: center;
   border-bottom: 1px solid #e5e7eb;
 }
-
+      /* Logo do App */
 .logo {
   font-size: 18px;
   margin-bottom: 8px;
 }
-
+       /* Saldo Atual */
 .saldo-label {
   font-size: 12px;
   display: block;
 }
-
 .saldo-valor {
   font-size: 24px;
   font-weight: 700;
   margin: 8px 0 16px;
 }
-
+      /* Filtro do mês*/
 .month-filter {
   display: flex;
   justify-content: center;
   gap: 8px;
 }
-
 .month-filter button {
   padding: 8px 16px;
   border-radius: 20px;
@@ -61,39 +58,30 @@ body {
   background: #e5e7eb;
   cursor: pointer;
 }
-
 .month-filter .active {
   background: var(--primary);
   color: white;
 }
-
-/* CONTAINER */
-
+      /* CONTAINER */
 .container {
   padding: 16px;
 }
-
-/* SECTION */
-
+      /* SEÇÕES */
 .section {
   margin-bottom: 24px;
 }
-
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
 }
-
-/* CARDS */
-
+      /* CARDS */
 .card-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-
 .transaction-card {
   display: flex;
   align-items: center;
@@ -103,7 +91,7 @@ body {
   border-radius: var(--radius);
   box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
-
+      /* Ícone de Entrada ou Saída */
 .icon {
   width: 40px;
   height: 40px;
@@ -114,32 +102,31 @@ body {
   font-weight: 700;
   color: white;
 }
-
+      /* Cores para Entrada e Saída */
 .income {
   background: var(--success);
 }
-
 .expense {
   background: var(--danger);
 }
-
+      /* Informações da transação */
 .info {
   flex: 1;
   margin-left: 16px;
   display: flex;
   flex-direction: column;
 }
-
+      /* Título e Categoria */
 .title {
   font-size: 16px;
   font-weight: 600;
 }
-
+      /* Categoria com opacidade para dar destaque ao título */
 .category {
   font-size: 12px;
   opacity: 0.6;
 }
-
+    /* Alinhamento à direita para valor e status */
 .right {
   text-align: right;
   display: flex;
@@ -824,4 +811,76 @@ body { background: var(--background); color: var(--text); padding-bottom: 80px; 
     display: block;
     margin-top: 5px;
     color: #666;
+}
+#btn-settings {
+    display: none; /* Começa escondido */
+    justify-content: center;
+    align-items: center;
+}
+/* Estado Normal do Campo Cliente */
+#group-cliente {
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    max-height: 100px; /* Valor suficiente para cobrir label + input */
+    opacity: 1;
+    overflow: hidden;
+    visibility: visible;
+    margin-bottom: 15px; /* Ajuste conforme seu layout */
+}
+
+/* Estado Escondido (quando for Saída) */
+#group-cliente.hidden {
+    max-height: 0;
+    opacity: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    visibility: hidden;
+    pointer-events: none; /* Impede cliques enquanto invisível */
+}
+/* Definição da animação de redemoinho */
+@keyframes spinIn {
+    from {
+        transform: rotate(0deg) scale(0);
+        opacity: 0;
+    }
+    to {
+        transform: rotate(360deg) scale(1);
+        opacity: 1;
+    }
+}
+
+/* Classe que aplica a animação */
+.animacao-redemoinho {
+    animation: spinIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Container principal da janela de log */
+/* Janela de Log Limpa */
+.log-window-clean {
+    background: #fdfdfd; 
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    margin-top: 15px;
+    max-height: 200px; /* Altura fixa para o scroll */
+    overflow-y: auto;
+    padding: 12px;
+}
+
+.log-window-clean pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: 'Inter', sans-serif; /* Mesma fonte do seu app */
+    font-size: 13px;
+    color: #444;
+    margin: 0;
+    line-height: 1.6;
+}
+
+/* Barra de rolagem discreta */
+.log-window-clean::-webkit-scrollbar {
+    width: 5px;
+}
+.log-window-clean::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 10px;
 }

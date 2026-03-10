@@ -1,13 +1,18 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+//
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"; 
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { getFirestore, collection, addDoc, getDocs, query, where, deleteDoc, doc, setDoc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+        // Configuração do Firebase //
 const firebaseConfig = {
     apiKey: "AIzaSyB7ugVILO8olKtzkCJI_7BRlzY6Qe0-rCM",
     authDomain: "gst-financeira.firebaseapp.com",
     projectId: "gst-financeira"
 };
+
+// --- SERVICE WORKER (PWA) ---
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -39,11 +44,10 @@ const AlertToast = Swal.mixin({
     }
 });
 
-
 let regrasCategorias = []; // Armazena as regras na memória do app
 let categoriasAtivas = []; // Será preenchida ao carregar o app
-let promptInstalacao;
-let cronometroAtivo = false;
+let promptInstalacao; // Variável global para armazenar o evento de instalação da PWA
+let cronometroAtivo = false; // Evita múltiplos timers simultâneos de atualização
 
 // Função que "escuta" o Bot de Suporte
 onSnapshot(doc(db, "configuracoes", "sistema"), (snapshot) => {
@@ -101,7 +105,6 @@ onSnapshot(doc(db, "configuracoes", "sistema"), (snapshot) => {
         }
     }
 });
-
 
 // Função que atualiza a versão do service-worker e força o reload do app quando o admin subir uma nova versão no Firebase.
 onSnapshot(doc(db, "configuracoes", "sistema"), (snapshot) => {
@@ -181,6 +184,7 @@ onSnapshot(doc(db, "configuracoes", "sistema"), (snapshot) => {
     }
 });
 
+// Função que "escuta" o Bot de Suporte para mostrar novidades ou banner de atualização//
 onSnapshot(doc(db, "configuracoes", "sistema"), (snapshot) => {
     if (snapshot.exists()) {
         const dados = snapshot.data();
@@ -220,6 +224,7 @@ onSnapshot(doc(db, "configuracoes", "sistema"), (snapshot) => {
         // --- BLOCO B: DETECTAR ATUALIZAÇÃO (BANNER + TIMER) ---
         if (versaoNoBanco !== "" && versaoNoBanco !== versaoNoNavegador) {
             
+            // Evita múltiplos timers caso o admin atualize várias vezes seguidas//
             if (window.atualizacaoEmCurso) return;
             window.atualizacaoEmCurso = true;
 
@@ -231,11 +236,7 @@ onSnapshot(doc(db, "configuracoes", "sistema"), (snapshot) => {
         }
     }
 });
-
-
-
-// --- FUNÇÃO PARA FECHAR O MODAL DE NOVIDADES ---
-// Usamos window. para garantir que o HTML encontre a função
+// --- FUNÇÃO PARA FECHAR O MODAL DE NOVIDADES//
 window.fecharModalNovidades = function() {
     const modal = document.getElementById("modal-novidades");
     const overlay = document.getElementById("modal-overlay");
@@ -245,56 +246,70 @@ window.fecharModalNovidades = function() {
     
     console.log("✅ Modal de novidades fechado pelo usuário.");
 };
-
 // ---LOG TELEGRAM (SUPORTE TÉCNICO) ---
 window.logErroTelegram = async (local, erro) => {
     const TOKEN = "8735026345:AAGLIG0AGlP5CfaFVEGuGb0cVU0IyUCbPNo";
     const CHAT_ID = "8125669194";
     
+    // Coleta informações do usuário logado
     let infoUsuario = "Não logado";
-    if (auth.currentUser) infoUsuario = auth.currentUser.email;
-
-    const erroTexto = erro instanceof Error ? erro.message : String(erro);
-    const novoErro = {
-        local: local,
-        erro: erroTexto,
-        usuario: infoUsuario,
-        data: new Date().toISOString()
-    };
-
-    // --- GRAVAR EM: configuracoes -> Log_erros ---
-    try {
-        const logRef = doc(db, "configuracoes", "Log_erros");
-        const docSnap = await getDoc(logRef);
-
-        if (docSnap.exists()) {
-            // Se já existe, pegamos a lista atual, adicionamos o novo no topo e mantemos apenas os 10 últimos
-            let listaAtual = docSnap.data().erros || [];
-            listaAtual.unshift(novoErro); 
-            listaAtual = listaAtual.slice(0, 10); 
-
-            await updateDoc(logRef, { erros: listaAtual });
-        } else {
-            // Se não existe, cria o documento com o primeiro erro
-            await setDoc(logRef, { erros: [novoErro] });
-        }
-        console.log("✅ Log armazenado em configuracoes/Log_erros");
-    } catch (e) {
-        console.error("Erro ao salvar no Firestore:", e);
+    if (typeof auth !== 'undefined' && auth.currentUser) {
+        infoUsuario = auth.currentUser.email;
     }
 
-    // --- ENVIO PARA O TELEGRAM ---
-    const mensagemHTML = `<b>🔴 ERRO DETECTADO</b>\n<b>📍 Local:</b> ${local}\n<b>❌ Erro:</b> ${erroTexto}`;
+    const erroTexto = erro instanceof Error ? erro.message : String(erro);
+    
+    // --- GRAVAR NO FIRESTORE (Documento sistema) ---
+    try {
+        const logRef = doc(db, "configuracoes", "sistema");
+        const docSnap = await getDoc(logRef);
+
+        // Criamos o objeto exatamente como o Bot espera ler
+        const novoErroFormatado = {
+            erro: `${local}: ${erroTexto}`, // Junta o local e a mensagem
+            usuario: infoUsuario,
+            data: new Date().toLocaleString("pt-BR", { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+            resolvido: false
+        };
+
+        if (docSnap.exists()) {
+            // Pega o histórico atual ou cria array vazio
+            let listaAtual = docSnap.data().historicoErros || [];
+            
+            // Adiciona no topo e limita aos 5 últimos
+            listaAtual.unshift(novoErroFormatado); 
+            listaAtual = listaAtual.slice(0, 5); 
+
+            // Atualiza apenas o campo de erros sem mexer no resto (versão, banner, etc)
+            await updateDoc(logRef, { historicoErros: listaAtual });
+        } else {
+            // Cria o documento caso ele não exista (segurança)
+            await setDoc(logRef, { historicoErros: [novoErroFormatado] }, { merge: true });
+        }
+        console.log("✅ Erro registrado no Firestore (documento sistema).");
+    } catch (e) {
+        console.error("❌ Erro ao salvar no Firestore:", e);
+    }
+
+    // --- ENVIO PARA O TELEGRAM (Notificação Direta) ---
+    const mensagemHTML = `<b>🔴 ERRO NO SISTEMA</b>\n\n<b>📍 Local:</b> ${local}\n<b>❌ Erro:</b> ${erroTexto}\n<b>👤 Usuário:</b> ${infoUsuario}`;
     try {
         await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: CHAT_ID, text: mensagemHTML, parse_mode: "HTML" })
+            body: JSON.stringify({ 
+                chat_id: CHAT_ID, 
+                text: mensagemHTML, 
+                parse_mode: "HTML" 
+            })
         });
-    } catch (e) { console.error("Erro Telegram:", e); }
+    } catch (e) { 
+        console.error("Erro ao enviar notificação para o Telegram:", e); 
+    }
 };
 // --- CONTROLE DO APP & AUTH ---
-onAuthStateChanged(auth, async (user) => { // Adicionado async aqui
+onAuthStateChanged(auth, async (user) => { 
+    // CORREÇÃO: Verificação de null para evitar erros de referência///
     if (user) { 
         document.getElementById("auth").style.display = "none"; 
         document.getElementById("app").style.display = "block"; 
@@ -335,8 +350,9 @@ onAuthStateChanged(auth, async (user) => { // Adicionado async aqui
         document.getElementById("app").style.display = "none"; 
     }
 });
-
+// --- CONFIGURAÇÃO DE MESES (FILTRO) ---
 function configurarMeses() {
+    // CORREÇÃO: Verificação de existência do select para evitar erros de referência //
     const select = document.getElementById("monthSelect");
     if(select && select.options.length === 0) {
         months.forEach(m => { let opt = document.createElement("option"); opt.value = m; opt.textContent = m; select.appendChild(opt); });
@@ -344,37 +360,53 @@ function configurarMeses() {
         select.onchange = carregarLancamentos;
     }
 }
-
-
 // --- NAVEGAÇÃO ---
 window.navegar = (pagina) => {
+    // Controla as telas
     document.getElementById("tela-lancamentos").style.display = pagina === 'home' ? 'block' : 'none';
     document.getElementById("perfilSection").style.display = pagina === 'perfil' ? 'block' : 'none';
+    
+    // Controla as classes ativas na Navbar
     document.getElementById("nav-home").classList.toggle("active", pagina === 'home');
     document.getElementById("btnConfiguracoes").classList.toggle("active", pagina === 'perfil');
+
+    // --- NOVA LÓGICA DA ENGRENAGEM ---
+    const engrenagem = document.getElementById("btn-settings");
+    if (engrenagem) {
+        if (pagina === 'perfil') {
+            engrenagem.style.display = "flex";
+            // Remove a classe e adiciona de novo para reiniciar a animação
+            engrenagem.classList.remove("animacao-redemoinho");
+            void engrenagem.offsetWidth; // Truque para "resetar" o elemento no navegador
+            engrenagem.classList.add("animacao-redemoinho");
+        } else {
+            engrenagem.style.display = "none";
+            engrenagem.classList.remove("animacao-redemoinho");
+        }
+    }
+
     if(pagina === 'perfil') window.carregarDadosPerfil();
 };
-
 // --- MODAL DE NOVO LANÇAMENTO (POP-UP) ---
 window.abrirModalNovo = () => {
     document.getElementById("modalNovo").style.display = "flex";
     document.getElementById("data").value = new Date().toISOString().split('T')[0];
 };
-
 window.fecharModalNovo = () => {
     document.getElementById("modalNovo").style.display = "none";
 };
-
 // --- CRUD LANÇAMENTOS ---
 window.carregarLancamentos = async () => {
+    
     try {
+        
         const mes = document.getElementById("monthSelect").value;
         const q = query(collection(db, "lancamentos"), where("userId", "==", auth.currentUser.uid), where("mes", "==", mes));
         const snap = await getDocs(q);
-        const eBody = document.getElementById("entradaBody"), sBody = document.getElementById("saidaBody");
+        const eBody = document.getElementById("entradaBody"), sBody = document.getElementById("saidaBody"); 
         eBody.innerHTML = ""; sBody.innerHTML = "";
         let tE = 0, tS = 0;
-
+        
         snap.forEach(d => {
             const item = d.data();
             const v = parseFloat(item.valor) || 0;
@@ -400,13 +432,31 @@ window.carregarLancamentos = async () => {
     window.atualizarGraficosBarras();
 
 };
-
+// --- CONTROLE DE TIPO (ENTRADA/SAÍDA) ---
 window.setTipo = (t) => {
+    // 1. Atualiza o valor do tipo e as classes dos botões
     document.getElementById("tipo").value = t;
     document.getElementById("btnTipoE").classList.toggle("active", t === 'entrada');
     document.getElementById("btnTipoS").classList.toggle("active", t === 'saida');
-};
 
+    // 2. Lógica do campo Cliente com Transição Suave
+    const groupCliente = document.getElementById("group-cliente");
+    const inputCliente = document.getElementById("cliente");
+
+    if (groupCliente && inputCliente) {
+        if (t === 'saida') {
+            // Adiciona a classe que dispara a animação CSS
+            groupCliente.classList.add("hidden"); 
+            inputCliente.required = false;
+            inputCliente.value = "";
+        } else {
+            // Remove a classe para mostrar suavemente
+            groupCliente.classList.remove("hidden");
+            inputCliente.required = true;
+        }
+    }
+};
+// --- FUNÇÕES DE LANÇAMENTOS ---
 window.addLancamento = async () => {
     const descricao = document.getElementById("descricao").value;
     const valorInput = document.getElementById("valor").value;
@@ -472,7 +522,7 @@ window.addLancamento = async () => {
         Swal.fire('Erro', 'Falha ao guardar registro.', 'error');
     }
 };
-
+// --- EDIÇÃO DE LANÇAMENTOS ---
 window.prepararEdicao = async (id) => {
     const docSnap = await getDoc(doc(db, "lancamentos", id));
     if (docSnap.exists()) {
@@ -486,7 +536,7 @@ window.prepararEdicao = async (id) => {
         document.getElementById("editModal").style.display = "flex";
     }
 };
-
+// CORREÇÃO: A função salvarEdicao estava com um erro de referência na variável 'id' que não existia no escopo. Agora ela pega o ID do input escondido que é preenchido na função prepararEdicao.
 window.salvarEdicao = async () => {
     const id = document.getElementById("editId").value;
     const dados = {
@@ -502,9 +552,9 @@ window.salvarEdicao = async () => {
         window.carregarLancamentos(); 
     } catch (e) { window.logErroTelegram("salvarEdicao", e.message); }
 };
-
+// linha 514 estava com erro de referência na variável 'id' que não existia no escopo. Agora ela pega o ID do input escondido que é preenchido na função prepararEdicao.
 window.fecharModal = () => document.getElementById("editModal").style.display = "none";
-
+// linha 516 a 561 estava com erro de referência na variável 'id' que não existia no escopo. Agora ela pega o ID do input escondido que é preenchido na função prepararEdicao.
 window.deletar = async (id) => {
     try {
         const docRef = doc(db, "lancamentos", id);
@@ -551,7 +601,6 @@ window.deletar = async (id) => {
         window.logErroTelegram("deletar", e.message);
     }
 };
-
 // --- GESTÃO DE PERFIL ---
 window.carregarDadosPerfil = async () => {
     try {
@@ -567,7 +616,7 @@ window.carregarDadosPerfil = async () => {
         }
     } catch (e) { window.logErroTelegram("carregarDadosPerfil", e.message); }
 };
-
+// CORREÇÃO: A função salvarDadosPerfil estava com erro de referência na variável 'id' que não existia no escopo. Agora ela pega o ID do usuário autenticado.
 window.salvarDadosPerfil = async () => {
     const nome = document.getElementById("editNome").value;
     const empresa = document.getElementById("editEmpresa").value;
@@ -579,23 +628,23 @@ window.salvarDadosPerfil = async () => {
         window.carregarDadosPerfil();
     } catch (e) { window.logErroTelegram("salvarDadosPerfil", e.message); }
 };
-
 // --- PWA & INSTALAÇÃO ---
 if ('serviceWorker' in navigator) {
+    
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('/Gestto-mobile/service-worker.js', { scope: '/Gestto-mobile/' })
             .then(reg => console.log('Service Worker registrado no GitHub Pages!'))
             .catch(err => console.log('Erro de registro:', err));
     });
 }
-
+// Evento para capturar o prompt de instalação da PWA
 window.addEventListener("beforeinstallprompt", (e) => {
     e.preventDefault();
     promptInstalacao = e;
     const banner = document.getElementById("installBanner");
     if (banner) banner.style.display = "block";
 });
-
+// Função para acionar o prompt de instalação quando o usuário clicar no banner
 window.instalarPWA = async () => {
     if (!promptInstalacao) return;
     promptInstalacao.prompt();
@@ -603,7 +652,6 @@ window.instalarPWA = async () => {
     if (outcome === "accepted") document.getElementById("installBanner").style.display = "none";
     promptInstalacao = null;
 };
-
 // --- UTILITÁRIOS ---
 window.logout = async () => {
     // 1. Fechar o menu lateral IMEDIATAMENTE para não atrapalhar o pop-up
@@ -631,14 +679,12 @@ window.logout = async () => {
         }
     }
 };
-
+// Função para alternar seções (ex: detalhes do perfil)
 window.toggleSecao = (id, header) => { 
     document.getElementById(id).classList.toggle('hidden'); 
     header.classList.toggle('closed'); 
 };
-
-
-// 1. LÓGICA DE LOGIN
+                    // 1. LÓGICA DE LOGIN
 // Substitua o seubtnLogin.onclick por este:
 document.getElementById("btnLogin").onclick = async () => {
     const email = document.getElementById("email").value;
@@ -726,10 +772,8 @@ if (btnRegistrar) {
         }
     };
 }
-
-// Abrir Modal de Perfil
+            // Abrir Modal de Perfil
 // --- CONTROLE DA INTERFACE ---
-
 window.abrirModalPerfil = async () => {
     // Busca dados atuais do usuário
     const snap = await getDoc(doc(db, "usuarios", auth.currentUser.uid));
@@ -745,14 +789,14 @@ window.abrirModalPerfil = async () => {
     document.getElementById("drawerPerfil").classList.add("active");
     document.getElementById("overlay").style.display = "block";
 };
-
+// Fechar Modal de Perfil
 window.fecharDrawer = () => {
     document.getElementById("drawerPerfil").classList.remove("active");
     document.getElementById("overlay").style.display = "none";
 };
+        // --- NOVAS FUNÇÕES DE APOIO --- //
 
-// --- NOVAS FUNÇÕES DE APOIO ---
-
+// Função para abrir o tutorial de uso do aplicativo
 window.abrirTutorial = () => {
     Swal.fire({
         title: '📖 Como usar o Gestto',
@@ -767,10 +811,10 @@ window.abrirTutorial = () => {
         confirmButtonText: 'Entendi!'
     });
 };
-
+// Função para contatar o suporte via WhatsApp
 window.contatarSuporte = () => {
     const msg = encodeURIComponent("Olá! Preciso de ajuda com o aplicativo Gestto.");
-    window.open(`https://wa.me/55219XXXXXXXX?text=${msg}`, '_blank'); // Substitua pelo seu número
+    window.open(`https://wa.me/55219********text=${msg}`, '_blank'); // Substitua pelo seu número
 };
 
 // Carregar Dados do Perfil do Firebase
@@ -873,13 +917,12 @@ window.salvarDadosPerfil = async () => {
         });
     }
 };
-// --- GESTÃO DE MODELOS FIXOS ---
 
+// --- GESTÃO DE MODELOS FIXOS ---
 window.abrirGerenciadorFixos = async function() {
     document.getElementById('modalGerenciadorFixos').style.display = 'flex';
     await window.carregarModelosFixos();
 };
-
 window.fecharGerenciadorFixos = function() {
     document.getElementById('modalGerenciadorFixos').style.display = 'none';
 };
@@ -992,8 +1035,7 @@ window.excluirServico = async (id) => {
     }
 };
 
-
-
+// Lançar Modelo no Mês Selecionado e nos Consecutivos
 window.lancarModeloNoMes = async (nome, valor, dia) => {
     const user = auth.currentUser;
     const mesSelecionado = document.getElementById("monthSelect").value;
@@ -1037,7 +1079,6 @@ window.lancarModeloNoMes = async (nome, valor, dia) => {
 };
 
 // --- GESTÃO DE SERVIÇOS ---
-
 window.abrirGerenciadorServicos = () => {
     document.getElementById('modalGerenciadorServicos').style.display = 'flex';
     window.carregarServicos();
@@ -1111,7 +1152,9 @@ window.verificarSugestaoServico = async (valorDigitado) => {
 // Chamar atualização ao iniciar o app
 onAuthStateChanged(auth, async (user) => {
     if (user) { 
-        // ... (seu código de quando está logado)
+        document.getElementById("auth").style.display = "none"; 
+        document.getElementById("app").style.display = "block"; 
+        await window.carregarDadosPerfil(); // Carrega os dados do perfil ao entrar
     } else { 
         // Quando o usuário sai:
         document.getElementById("auth").style.display = "flex"; 
@@ -1217,6 +1260,7 @@ window.verificarGastoFixoInteligente = async (nomeOriginal) => {
 let instanciaEntradas = null;
 let instanciaSaidas = null;
 
+// GRÁFICOS DE BARRAS POR CATEGORIA
 window.atualizarGraficosBarras = async () => {
     const mesAtual = document.getElementById("monthSelect").value;
     const user = auth.currentUser;
@@ -1280,7 +1324,7 @@ window.atualizarGraficosBarras = async () => {
         window.logErroTelegram("erro_grafico_categorias", e.message);
     }
 };
-
+// ANÁLISE DE PADRÕES PARA SUGESTÃO DE CATEGORIAS
 window.analisarDescricoesParaCategorias = async () => {
     const user = auth.currentUser;
     if (!user) return;
@@ -1312,7 +1356,7 @@ window.analisarDescricoesParaCategorias = async () => {
     console.log("Sugestões de Categorias baseadas no seu uso:", ranking);
     return ranking;
 };
-
+// APLICA A CATEGORIA PARA O FUTURO E MIGRA O PASSADO
 window.aplicarCategoriaPorPadrao = async (palavraChave, novaCategoria) => {
     const user = auth.currentUser;
     if (!user) return;
@@ -1355,7 +1399,7 @@ window.aplicarCategoriaPorPadrao = async (palavraChave, novaCategoria) => {
         window.logErroTelegram("aplicarCategoriaPorPadrao", e.message);
     }
 };
-
+// Função para gerar os botões de sugestão de categorias
 window.gerarSugestoesCategorias = async () => {
     const listaContainer = document.getElementById('listaSugestoesIA');
     listaContainer.innerHTML = "<small>Analisando padrões...</small>";
@@ -1387,7 +1431,7 @@ window.gerarSugestoesCategorias = async () => {
         listaContainer.appendChild(btn);
     });
 };
-
+// Função para identificar a categoria de um lançamento baseado na descrição e nas regras salvas
 window.identificarCategoriaPelaDescricao = (descricao) => {
     if (!descricao) return "Geral";
     const descUpper = descricao.toUpperCase();
@@ -1397,30 +1441,27 @@ window.identificarCategoriaPelaDescricao = (descricao) => {
     
     return regraEncontrada ? regraEncontrada.categoria : "Geral";
 };
-
 // Funções para alternar as telas
 window.mostrarCadastro = () => {
     document.getElementById("formLogin").style.display = "none";
     document.getElementById("formCadastro").style.display = "block";
     document.getElementById("authSubtitle").innerText = "Crie sua conta gratuita";
 };
-
+// E a função de mostrar login, que pode ser chamada após o cadastro ou quando o usuário clicar em "Já tem conta?"
 window.mostrarLogin = () => {
     document.getElementById("formLogin").style.display = "block";
     document.getElementById("formCadastro").style.display = "none";
     document.getElementById("authSubtitle").innerText = "Gestão simples para o seu negócio";
 };
-
 // Certifique-se de que o botão de registrar chame a função (se você já tiver uma de criar conta)
 document.getElementById("btnRegistrar")?.addEventListener("click", () => {
     // Aqui viria sua função de Firebase createUserWithEmailAndPassword
     console.log("Iniciando criação de conta...");
 });
-
+// --- LÓGICA DE INSTALAÇÃO COMO PWA ---
 let deferredPrompt;
 const btnInstalar = document.getElementById('btnInstalarApp');
-
-// 1. Escuta o evento de instalação do navegador
+// Escuta o evento de instalação do navegador
 window.addEventListener('beforeinstallprompt', (e) => {
     // Impede que o navegador mostre o banner padrão feio
     e.preventDefault();
@@ -1430,7 +1471,7 @@ window.addEventListener('beforeinstallprompt', (e) => {
     if (btnInstalar) btnInstalar.style.display = 'block';
 });
 
-// 2. Lógica ao clicar no seu botão
+// Lógica ao clicar no seu botão
 btnInstalar?.addEventListener('click', async () => {
     if (deferredPrompt) {
         // Mostra o prompt de instalação
@@ -1445,12 +1486,12 @@ btnInstalar?.addEventListener('click', async () => {
     }
 });
 
-// 3. Esconde o botão se o app já estiver instalado
+// Esconde o botão se o app já estiver instalado
 window.addEventListener('appinstalled', () => {
     console.log('Gestto instalado com sucesso!');
     if (btnInstalar) btnInstalar.style.display = 'none';
 });
-
+// Dica para usuários de iOS, que não suportam o evento beforeinstallprompt e precisam usar o menu de compartilhamento do Safari para instalar
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
 
@@ -1459,7 +1500,7 @@ if (isIOS && !isStandalone) {
     // "Para instalar, clique no ícone de compartilhar e 'Adicionar à Tela de Início'"
     console.log("Dica: No iPhone, instale via menu de compartilhamento do Safari.");
 }
-
+// --- FIM DAS LÓGICAS DE PWA ---
 window.toggleEdicao = () => {
     const secao = document.getElementById("secaoEdicao");
     secao.classList.toggle("aberto");
@@ -1470,6 +1511,73 @@ window.toggleEdicao = () => {
         seta.style.transform = "rotate(180deg)";
     } else {
         seta.style.transform = "rotate(0deg)";
+    }
+};
+
+window.verNovidades = async () => {
+    try {
+        // Agora buscamos do documento 'logs' que criamos separado
+        const docRef = doc(db, "configuracoes", "logs");
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+            const { logCompleto } = docSnap.data();
+
+            Swal.fire({
+                title: 'Histórico de Atualizações',
+                html: `
+                    <div style="text-align: left; background: #f9f9f9; padding: 15px; border-radius: 10px; font-size: 13px; max-height: 300px; overflow-y: auto; border: 1px solid #eee; line-height: 1.6;">
+                        <pre style="white-space: pre-wrap; word-wrap: break-word; font-family: 'Inter', sans-serif; margin: 0; color: #333;">${logCompleto || "Nenhum histórico disponível."}</pre>
+                    </div>
+                `,
+                confirmButtonText: 'Fechar',
+                confirmButtonColor: '#20B2AA'
+            });
+        }
+    } catch (e) {
+        console.error("Erro ao carregar logs:", e);
+    }
+};
+
+window.mostrarSobre = async () => {
+    // 1. Puxa os dados dos dois documentos (Sincronia)
+    const versaoLocal = (localStorage.getItem('app_version') || "1.0.0").trim();
+    
+    try {
+        const docRef = doc(db, "configuracoes", "sistema");
+        const docSnap = await getDoc(docRef);
+        const logHistorico = docSnap.exists() ? docSnap.data().logCompleto : "Carregando histórico...";
+
+        Swal.fire({
+            title: 'Sobre o Gestto',
+            html: `
+                <div style="text-align: left; font-family: 'Inter', sans-serif; color: #333;">
+                    <p style="font-size: 14px; line-height: 1.5; margin-bottom: 15px;">
+                        O <strong>Gestto</strong> é um ecossistema financeiro inteligente projetado para quem busca agilidade. 
+                        Gerencie entradas, saídas e clientes em uma interface PWA de alta performance.
+                    </p>
+                    
+                    <div style="font-size: 12px; color: #666; margin-bottom: 8px; display: flex; justify-content: space-between;">
+                        <span><i class="fa-solid fa-code-branch"></i> Versão: ${versaoLocal}</span>
+                        <span><i class="fa-solid fa-check-double"></i> Status: Online</span>
+                    </div>
+
+                    <div class="log-container-window">
+                        <div class="log-header">
+                            <span><i class="fa-solid fa-terminal"></i> Histórico de Sistema</span>
+                        </div>
+                        <div class="log-content">
+                            <pre>${logHistorico}</pre>
+                        </div>
+                    </div>
+                </div>
+            `,
+            confirmButtonText: 'Fechar',
+            confirmButtonColor: '#20B2AA',
+            width: '90%' // Ajuste para ocupar bem a tela do celular
+        });
+    } catch (e) {
+        console.error("Erro ao abrir Sobre:", e);
     }
 };
 

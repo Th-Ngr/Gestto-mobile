@@ -23,10 +23,6 @@
 
 </head>
 <body>
-    <!--Banners de Notificações e Modais -->
-<!--<div id="banner-admin" style="display:none; background: hsl(0, 89%, 72%); color: white; text-align: center; padding: 12px; position: fixed; top: 0; width: 100%; z-index: 9999; font-weight: bold; font-family: sans-serif; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">
-    ⚠️ <span id="txt-admin"></span>
-</div>-->
     <!--Modal de Novidades -->
 <div id="modal-novidades" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); width:90%; max-width:400px; background:white; color:#333; padding:20px; border-radius:15px; box-shadow:0 10px 30px rgba(0,0,0,0.3); z-index:10000; text-align:center; font-family:sans-serif;">
     <h3 style="color:#2ecc71; margin-top:0;">✅ Atualizado com Sucesso!</h3>
@@ -86,7 +82,7 @@
         <i class="fa-solid fa-plus"></i>
     </button>
     <h1 class="logo">Gestto</h1>
-    <button class="config-btn-round" onclick="window.abrirModalPerfil()">
+    <button class="config-btn-round" id="btn-settings" onclick="window.abrirModalPerfil()">
         <i class="fa-solid fa-gear"></i>
     </button>
           
@@ -218,11 +214,15 @@
             <button type="button" id="btnTipoS" class="btn-tipo" onclick="window.setTipo('saida')">Saída</button>
             </div>
 
-        <div class="form-group"><input type="text" id="cliente" required><label>Cliente/Origem</label></div>
+        <div class="form-group" id="group-cliente" >
+            <input type="text" id="cliente" required>
+            <label>Cliente/Origem</label>
+        </div>
+
         <div class="form-group">
-    <input type="text" id="descricao" list="listaSugestoesServicos" oninput="window.verificarSugestaoServico(this.value)" required>
-    <label>Descrição</label>
-</div>
+            <input type="text" id="descricao" list="listaSugestoesServicos" oninput="window.verificarSugestaoServico(this.value)" required>
+            <label>Descrição</label>
+        </div>
 <datalist id="listaSugestoesServicos"></datalist>
         <div class="form-group"><input type="number" id="valor" required><label>Valor</label></div>
         <div class="form-group"><input type="date" id="data" required><label>Data</label></div>
@@ -349,6 +349,12 @@
         <button onclick="window.contatarSuporte()" class="btn-secondary-drawer">
             <i class="fa-solid fa-headset"></i> Suporte Técnico
         </button>
+
+        <div class="menu-item" onclick="window.mostrarSobre()">
+            <i class="fa-solid fa-circle-info"></i>
+            <span>Sobre o Sistema</span>
+        </div>
+
         <button onclick="window.logout()" class="btn-logout-drawer">
             <i class="fa-solid fa-right-from-bracket"></i> Sair da Conta
         </button>
