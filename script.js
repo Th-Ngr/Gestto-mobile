@@ -1,9 +1,35 @@
 //
+// 1. Inicialização do App
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"; 
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"; 
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, getDocs, query, where, deleteDoc, doc, setDoc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+// 2. Autenticação
+import { 
+    getAuth, 
+    createUserWithEmailAndPassword, 
+    sendEmailVerification, 
+    onAuthStateChanged, 
+    signInWithEmailAndPassword, 
+    signOut,
+    sendPasswordResetEmail,
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+// 3. Firestore (Banco de Dados e Persistência Offline)
+import { 
+    initializeFirestore, 
+    persistentLocalCache, 
+    persistentMultipleTabManager,
+    collection, 
+    addDoc, 
+    getDocs, 
+    query, 
+    where, 
+    deleteDoc, 
+    doc, 
+    setDoc, 
+    getDoc, 
+    updateDoc, 
+    onSnapshot 
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         // Configuração do Firebase //
 const firebaseConfig = {
@@ -11,13 +37,51 @@ const firebaseConfig = {
     authDomain: "gst-financeira.firebaseapp.com",
     projectId: "gst-financeira"
 };
+//Solicitação de notificação//
+window.solicitarNotificacao = () => {
+    if ("Notification" in window) {
+        Notification.requestPermission();
+    }
+};
+
+const recuperarSenha = (email) => {
+    sendPasswordResetEmail(auth, email)
+        .then(() => {
+            Swal.fire('Sucesso', 'E-mail de recuperação enviado!', 'success');
+        })
+        .catch((error) => {
+            Swal.fire('Erro', 'E-mail não encontrado.', 'error');
+        });
+};
+
+// Chame isso na verificação se for "hoje"
+if (Notification.permission === "granted" && p.status === "hoje") {
+    new Notification("Vencimento Hoje!", {
+        body: `O pagamento de ${p.nome} (R$ ${p.valor}) vence hoje!`,
+        icon: "sua_logo.png"
+});
+}
+
+
 
 // --- SERVICE WORKER (PWA) ---
 
+// 1. Inicialização do App e Serviços
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+
+// 2. Inicialização do Firestore com Persistência Moderna (Substitui o enableIndexedDbPersistence)
+// Isso evita que o debugger trave por conflito de abas
+const db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+    })
+});
+
+// 3. Constantes e Utilitários
 const months = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+// Toast configurado globalmente
 const Toast = Swal.mixin({
     toast: true,
     position: 'top-end',
@@ -31,6 +95,42 @@ const Toast = Swal.mixin({
     }
 });
 
+// 4. Função de Cadastro Profissional
+async function cadastrarUsuario(email, senha) {
+    try {
+        // Criar o usuário no Firebase Auth
+        const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
+        const user = userCredential.user;
+
+        // Disparar e-mail de verificação imediatamente
+        await sendEmailVerification(user);
+
+        // Criar o documento do usuário no Firestore (Importante para comercializar)
+        await setDoc(doc(db, "usuarios", user.uid), {
+            email: user.email,
+            dataCriacao: new Date(),
+            status: "aguardando_verificacao",
+            plano: "free"
+        });
+
+        Swal.fire({
+            title: 'Sucesso!',
+            html: `Conta criada para <b>${email}</b>.<br><br>Enviamos um link de confirmação. Você precisa validar seu e-mail para acessar o sistema.`,
+            icon: 'success',
+            confirmButtonColor: '#28a745'
+        });
+
+    } catch (error) {
+        console.error("Erro no cadastro:", error);
+        let mensagem = "Não foi possível criar a conta.";
+        
+        if (error.code === 'auth/email-already-in-use') mensagem = "Este e-mail já está em uso.";
+        if (error.code === 'auth/weak-password') mensagem = "A senha deve ter pelo menos 6 caracteres.";
+        
+        Swal.fire('Erro no Cadastro', mensagem, 'error');
+    }
+}
+
 // Toast para Avisos do Sistema / Telegram
 const AlertToast = Swal.mixin({
     toast: true,
@@ -43,7 +143,7 @@ const AlertToast = Swal.mixin({
         popup: 'toast-sistema-alert'
     }
 });
-
+let listaServicosCache = [];
 let regrasCategorias = []; // Armazena as regras na memória do app
 let categoriasAtivas = []; // Será preenchida ao carregar o app
 let promptInstalacao; // Variável global para armazenar o evento de instalação da PWA
@@ -244,7 +344,6 @@ window.fecharModalNovidades = function() {
     if (modal) modal.style.display = "none";
     if (overlay) overlay.style.display = "none";
     
-    console.log("✅ Modal de novidades fechado pelo usuário.");
 };
 // ---LOG TELEGRAM (SUPORTE TÉCNICO) ---
 window.logErroTelegram = async (local, erro) => {
@@ -309,24 +408,57 @@ window.logErroTelegram = async (local, erro) => {
 };
 // --- CONTROLE DO APP & AUTH ---
 onAuthStateChanged(auth, async (user) => { 
-    // CORREÇÃO: Verificação de null para evitar erros de referência///
     if (user) { 
+        // --- FILTRO DE SEGURANÇA COMERCIAL ---
+        if (!user.emailVerified) {
+            document.getElementById("auth").style.display = "flex"; 
+            document.getElementById("app").style.display = "none";
+
+            Swal.fire({
+                title: 'Verifique seu e-mail',
+                html: `Seu acesso está bloqueado.<br>Enviamos um link para <b>${user.email}</b>.<br><small>Verifique também sua caixa de Spam.</small>`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#28a745',
+                confirmButtonText: 'Reenviar Link',
+                cancelButtonText: 'Sair'
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    const { sendEmailVerification } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
+                    await sendEmailVerification(user);
+                    Swal.fire('Enviado!', 'Confira seu e-mail novamente.', 'success');
+                }
+                //await auth.signOut();//
+            });
+            return; // INTERROMPE aqui, não carrega os dados abaixo
+        }//
+        // -------------------------------------
+
         document.getElementById("auth").style.display = "none"; 
         document.getElementById("app").style.display = "block"; 
+        
         configurarMeses(); 
-        carregarLancamentos(); 
+        
+        await window.carregarModelosFixos();
+        await window.gerarProjecaoMesAtual(); 
+        await carregarLancamentos(); 
 
+        const jaAvisouNestaSessao = sessionStorage.getItem('avisoFinanceiroExibido');
+        if (!jaAvisouNestaSessao) {
+            await window.notificarStatusFinanceiro(); 
+            sessionStorage.setItem('avisoFinanceiroExibido', 'true'); // Corrigi a chave para bater com o get
+        }
+
+        // Configuração do Input Inteligente
         const inputDesc = document.getElementById("descricao");
         if (inputDesc) {
-            // Removemos listeners antigos para não duplicar chamadas
             inputDesc.replaceWith(inputDesc.cloneNode(true)); 
             const novoInputDesc = document.getElementById("descricao");
             
             novoInputDesc.addEventListener("blur", async (e) => {
                 const termo = e.target.value.trim();
                 const tipo = document.getElementById("tipo").value;
-                
-                if (termo.length < 3) return; // Só busca se tiver mais de 2 letras
+                if (termo.length < 3) return;
 
                 if (tipo === "entrada") {
                     await window.verificarServicoInteligente(termo);
@@ -335,21 +467,63 @@ onAuthStateChanged(auth, async (user) => {
                 }
             });
         }
-    
+
+        window.Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true,
+        });
 
         try {
-            // CORREÇÃO: Criando a variável snapRegras que estava faltando
             const qRegras = query(collection(db, "regras_categorias"), where("uid", "==", user.uid));
-            const snapRegras = await getDocs(qRegras); // Agora ela está definida!
+            const snapRegras = await getDocs(qRegras);
             regrasCategorias = snapRegras.docs.map(d => d.data());
         } catch (e) {
             console.error("Erro ao carregar regras:", e);
         }
+
     } else { 
         document.getElementById("auth").style.display = "flex"; 
         document.getElementById("app").style.display = "none"; 
+        sessionStorage.removeItem('avisoFinanceiroExibido');
     }
 });
+
+window.recuperarSenha = async () => {
+    const emailInput = document.getElementById('email-login')?.value;
+
+    const { value: email } = await Swal.fire({
+        title: 'Recuperar Senha',
+        input: 'email',
+        inputLabel: 'Digite seu e-mail cadastrado',
+        inputValue: emailInput || '',
+        showCancelButton: true,
+        confirmButtonText: 'Enviar Link',
+        cancelButtonText: 'Cancelar',
+        inputValidator: (value) => {
+            if (!value) return 'Você precisa digitar um e-mail!';
+        }
+    });
+
+    if (email) {
+        try {
+            await sendPasswordResetEmail(auth, email);
+            Swal.fire(
+                'E-mail Enviado!',
+                'Verifique sua caixa de entrada e siga as instruções para redefinir sua senha.',
+                'success'
+            );
+        } catch (error) {
+            console.error("Erro ao resetar senha:", error);
+            let mensagem = "Ocorreu um erro ao tentar enviar o e-mail.";
+            if (error.code === 'auth/user-not-found') mensagem = "Este e-mail não está cadastrado no sistema.";
+            
+            Swal.fire('Erro', mensagem, 'error');
+        }
+    }
+};
 // --- CONFIGURAÇÃO DE MESES (FILTRO) ---
 function configurarMeses() {
     // CORREÇÃO: Verificação de existência do select para evitar erros de referência //
@@ -390,18 +564,28 @@ window.navegar = (pagina) => {
 // --- MODAL DE NOVO LANÇAMENTO (POP-UP) ---
 window.abrirModalNovo = () => {
     document.getElementById("modalNovo").style.display = "flex";
+    window.setTipo('entrada');
     document.getElementById("data").value = new Date().toISOString().split('T')[0];
+    
 };
 window.fecharModalNovo = () => {
     document.getElementById("modalNovo").style.display = "none";
+    window.limparCamposModal();
 };
 // --- CRUD LANÇAMENTOS ---
 window.carregarLancamentos = async () => {
-    
+    const user = auth.currentUser;
+
+    if (!user) {
+        console.warn("Usuário não detectado, tentando novamente em 1s...");
+        setTimeout(window.carregarLancamentos, 1000);
+        return;
+    }
     try {
-        
+        const user = auth.currentUser;
+    if (!user) return;
         const mes = document.getElementById("monthSelect").value;
-        const q = query(collection(db, "lancamentos"), where("userId", "==", auth.currentUser.uid), where("mes", "==", mes));
+        const q = query(collection(db, "lancamentos"), where("userId", "==", user.uid), where("mes", "==", mes));
         const snap = await getDocs(q);
         const eBody = document.getElementById("entradaBody"), sBody = document.getElementById("saidaBody"); 
         eBody.innerHTML = ""; sBody.innerHTML = "";
@@ -432,6 +616,247 @@ window.carregarLancamentos = async () => {
     window.atualizarGraficosBarras();
 
 };
+
+// sistema de notificação//
+window.gerarProjecaoMesAtual = async () => {
+    const hoje = new Date();
+    const diaAtual = hoje.getDate();
+    const anoAtual = hoje.getFullYear();
+    
+    // Lista para converter o número do mês no nome que você usa no select
+    const mesesNomes = [
+        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ];
+
+    // Se o monthSelect estiver vazio, pegamos o mês atual por extenso
+    // Caso contrário, usamos o valor selecionado pelo usuário
+    let mesFiltro = document.getElementById("monthSelect").value;
+    
+    if (!mesFiltro) {
+        mesFiltro = mesesNomes[hoje.getMonth()];
+    }
+
+    const uid = auth.currentUser.uid;
+
+    try {
+        const qModelos = query(collection(db, "modelos_fixos"), where("uid", "==", uid));
+        const snapModelos = await getDocs(qModelos);
+
+        for (const docModelo of snapModelos.docs) {
+            const modelo = docModelo.data();
+            
+            // Criamos o ID Composto usando o NOME do mês agora (ex: Agua08Março2026)
+            const idComposto = `${modelo.nome.replace(/\s+/g, '')}${String(modelo.dia).padStart(2, '0')}${mesFiltro}${anoAtual}`;
+
+            const docRef = doc(db, "lancamentos", idComposto);
+            const docSnap = await getDoc(docRef);
+
+            if (!docSnap.exists()) {
+                // Lógica de Status (Lembrando de usar "Pendente" ou "Atrasado" com maiúscula se for o seu padrão)
+                let statusInicial = (diaAtual > modelo.dia) ? "Atrasado" : "Pendente";
+
+                await setDoc(docRef, {
+                    userId: uid,
+                    descricao: modelo.nome,
+                    valor: parseFloat(modelo.valor),
+                    data: `${anoAtual}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(modelo.dia).padStart(2, '0')}`,
+                    tipo: "saida",
+                    status: statusInicial,
+                    mes: mesFiltro, // Agora salvará "Março"
+                    origem: "fixo",
+                    dataCriacao: new Date()
+                });
+            }
+        }
+        window.carregarLancamentos();
+
+    } catch (e) {
+        console.error("Erro ao gerar projeção:", e);
+        window.logErroTelegram("erro ao gerar projeção", e.message); }
+
+};
+
+window.exibirAlertasPendencias = async () => {
+    const uid = auth.currentUser.uid;
+    const mesAtual = document.getElementById("monthSelect").value; // Pega o mês da tela
+
+    // Busca apenas o que está no banco como pendente ou atrasado
+    const q = query(
+        collection(db, "lancamentos"), 
+        where("userId", "==", uid),
+        where("mes", "==", mesAtual), // Garanta que você salva o campo 'mes' no setDoc
+        where("status", "in", ["pendente", "atrasado"])
+    );
+
+    const snap = await getDocs(q);
+    
+    if (!snap.empty) {
+        const total = snap.size;
+        Swal.fire({
+            title: 'Pendências Financeiras',
+            text: `Você tem ${total} contas que precisam de atenção este mês.`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Ver e Pagar',
+            cancelButtonText: 'Depois'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.abrirModalGestaoPendencias(); // Vamos criar este modal agora
+            }
+        });
+    }
+};
+
+window.notificarStatusFinanceiro = async () => {
+    const uid = auth.currentUser.uid;
+    const mesAtual = document.getElementById("monthSelect").value;
+
+    try {
+        // 1. Buscamos todos os lançamentos que NÃO estão pagos (Atrasados e Pendentes)
+        const q = query(
+            collection(db, "lancamentos"),
+            where("userId", "==", uid),
+            where("mes", "==", mesAtual),
+            where("status", "in", ["Atrasado", "Pendente"])
+        );
+
+        const snap = await getDocs(q);
+        
+        if (snap.empty) return; // Se não houver nada, não exibe alerta
+
+        // 2. Separamos os itens em dois grupos
+        const atrasados = [];
+        const pendentes = [];
+
+        snap.forEach(doc => {
+            const data = doc.data();
+            if (data.status === "Atrasado") {
+                atrasados.push(data.descricao);
+            } else {
+                pendentes.push(data.descricao);
+            }
+        });
+
+        // 3. Só mostramos o alerta se houver pelo menos um dos dois
+        if (atrasados.length > 0 || pendentes.length > 0) {
+            
+            Swal.fire({
+                title: 'Resumo de Pendências',
+                html: `
+                    <div style="text-align: left; font-family: sans-serif;">
+                        <div style="margin-bottom: 15px; padding: 10px; border-radius: 8px; background: #fff5f5; border-left: 5px solid #d33;">
+                            <h4 style="margin: 0 0 5px 0; color: #d33;">
+                                <i class="fa-solid fa-circle-xmark"></i> Atrasadas (${atrasados.length})
+                            </h4>
+                            <small>${atrasados.length > 0 ? atrasados.slice(0, 3).join(", ") : "Nenhuma conta vencida"}</small>
+                        </div>
+
+                        <div style="padding: 10px; border-radius: 8px; background: #fffdf5; border-left: 5px solid #f39c12;">
+                            <h4 style="margin: 0 0 5px 0; color: #f39c12;">
+                                <i class="fa-solid fa-clock"></i> Pendentes (${pendentes.length})
+                            </h4>
+                            <small>${pendentes.length > 0 ? pendentes.slice(0, 3).join(", ") : "Tudo em dia por enquanto"}</small>
+                        </div>
+                    </div>
+                `,
+                icon: atrasados.length > 0 ? 'error' : 'info', // Ícone de erro se houver atrasos, senão info
+                showCancelButton: true,
+                confirmButtonColor: '#28a745',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Ver Detalhes',
+                cancelButtonText: 'Fechar',
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.abrirModalGestaoPendencias();
+                }
+            });
+        }
+    } catch (e) {
+        console.error("Erro ao verificar status:", e);
+    }
+};
+
+window.abrirModalGestaoPendencias = async () => {
+    const uid = auth.currentUser.uid;
+    const mesAtual = document.getElementById("monthSelect").value;
+    const container = document.getElementById("listaPendenciasContainer");
+    
+    // Mostra o modal
+    document.getElementById('modalPendencias').style.display = 'block';
+    container.innerHTML = "<p style='text-align:center;'>Carregando pendências...</p>";
+
+    try {
+        const q = query(
+            collection(db, "lancamentos"),
+            where("userId", "==", uid),
+            where("mes", "==", mesAtual),
+            where("status", "in", ["Atrasado", "Pendente"]),
+            where("tipo", "==", "saida")
+        );
+
+        const snap = await getDocs(q);
+        container.innerHTML = "";
+
+        if (snap.empty) {
+            container.innerHTML = "<div style='text-align:center; padding:20px;'>🎉 Tudo pago por aqui!</div>";
+            return;
+        }
+
+        snap.forEach(docSnap => {
+            const item = docSnap.data();
+            const idDoc = docSnap.id;
+            const corStatus = item.status === 'Atrasado' ? '#d33' : '#f39c12';
+
+            container.innerHTML += `
+                <div class="transaction-card" style="border-left: 5px solid ${corStatus}; margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9f9f9; border-radius:8px;">
+                    <div class="info">
+                        <span class="title" style="display:block; font-weight:bold;">${item.descricao}</span>
+                        <span class="category" style="font-size:12px; color:#666;">Vence dia: ${item.data.split('-')[2] || '--'}</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span class="amount" style="font-weight:bold;">R$ ${parseFloat(item.valor).toFixed(2)}</span>
+                        <button onclick="window.confirmarPagamentoRapido('${idDoc}', '${item.descricao}')" 
+                                style="background:#28a745; color:white; border:none; padding:8px 12px; border-radius:5px; cursor:pointer;">
+                            <i class="fa-solid fa-check"></i> Pago
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+    } catch (e) {
+        console.error("Erro ao carregar pendências:", e);
+        container.innerHTML = "<p>Erro ao carregar dados.</p>";
+    }
+};
+
+window.confirmarPagamentoRapido = async (idDoc, nome) => {
+    try {
+        await updateDoc(doc(db, "lancamentos", idDoc), {
+            status: "Pago",
+            dataPagamento: new Date()
+        });
+
+        // Notificação de sucesso
+        if (window.Toast) {
+            window.Toast.fire({
+                icon: 'success',
+                title: `${nome} marcado como pago!`
+            });
+        }
+
+        // Atualiza o modal de pendências (remove o item da lista)
+        window.abrirModalGestaoPendencias();
+        
+        // Atualiza a tabela principal ao fundo
+        if (window.carregarLancamentos) window.carregarLancamentos();
+
+    } catch (e) {
+        console.error("Erro ao dar baixa:", e);
+        Swal.fire('Erro', 'Não foi possível atualizar o status.', 'error');
+    }
+};
+
 // --- CONTROLE DE TIPO (ENTRADA/SAÍDA) ---
 window.setTipo = (t) => {
     // 1. Atualiza o valor do tipo e as classes dos botões
@@ -456,14 +881,14 @@ window.setTipo = (t) => {
         }
     }
 };
-// --- FUNÇÕES DE LANÇAMENTOS ---
+// --- FUNÇÕES DE LANÇAMENTOS E LIMPEZA---
 window.addLancamento = async () => {
     const descricao = document.getElementById("descricao").value;
     const valorInput = document.getElementById("valor").value;
     const valor = parseFloat(valorInput) || 0;
     const dataBase = document.getElementById("data").value;
     const cliente = document.getElementById("cliente").value;
-    const tipo = document.getElementById("tipo").value;
+    const tipo = document.getElementById("tipo").value; // Agora pegará o valor correto
     const mesSelecionado = document.getElementById("monthSelect").value;
     const isFixa = document.getElementById("isFixa").checked;
 
@@ -473,7 +898,6 @@ window.addLancamento = async () => {
 
     try {
         const uid = auth.currentUser.uid;
-        // IDENTIFICAÇÃO DA CATEGORIA (Resolve o erro do gráfico)
         const categoriaIdentificada = window.identificarCategoriaPelaDescricao(descricao);
 
         const novo = { 
@@ -481,7 +905,7 @@ window.addLancamento = async () => {
             descricao, 
             valor, 
             data: dataBase, 
-            cliente, 
+            cliente: tipo === 'entrada' ? cliente : "", // Limpa cliente se for saída
             tipo, 
             isFixa, 
             mes: mesSelecionado, 
@@ -492,15 +916,14 @@ window.addLancamento = async () => {
         await addDoc(collection(db, "lancamentos"), novo);
 
         if (isFixa) {
-    await addDoc(collection(db, "modelos_fixos"), {
-        uid: uid, // Use 'uid' para manter o padrão da busca inteligente
-        nome: descricao,
-        valor: valor,
-        dia: parseInt(dataBase.split('-')[2]),
-        categoria: categoriaIdentificada,
-        dataCriacao: new Date()
-    });
-
+            await addDoc(collection(db, "modelos_fixos"), {
+                uid: uid,
+                nome: descricao,
+                valor: valor,
+                dia: parseInt(dataBase.split('-')[2]),
+                categoria: categoriaIdentificada,
+                dataCriacao: new Date()
+            });
 
             let indice = months.indexOf(mesSelecionado);
             for (let i = indice + 1; i < months.length; i++) {
@@ -508,10 +931,13 @@ window.addLancamento = async () => {
             }
         }
         
+        // Dispara a verificação inteligente de alteração de preço
+        window.verificarAtualizacaoModelo(descricao, valor);
+
         window.fecharModalNovo();
+        window.limparCamposModal();
         window.carregarLancamentos();
         
-        // FEEDBACK COM TOAST
         Toast.fire({
             icon: 'success',
             title: isFixa ? 'Lançamento Fixo Replicado!' : 'Salvo com sucesso!'
@@ -522,6 +948,113 @@ window.addLancamento = async () => {
         Swal.fire('Erro', 'Falha ao guardar registro.', 'error');
     }
 };
+
+window.limparCamposModal = () => {
+    document.getElementById("descricao").value = "";
+    document.getElementById("valor").value = "";
+    document.getElementById("data").value = "";
+    document.getElementById("cliente").value = "";
+    document.getElementById("tipo").value = "saida"; // ou o seu valor padrão
+    document.getElementById("isFixa").checked = false;
+    
+    // Se o seu modal usa o select de meses, talvez queira resetar para o atual
+    // document.getElementById("monthSelect").value = mesAtual;
+};
+
+// Função para verificar se o valor do serviço/modelo mudou
+window.verificarAtualizacaoModelo = async (descricao, valorNovo) => {
+    const uid = auth.currentUser.uid;
+    const userDocRef = doc(db, "usuarios", uid);
+    
+    try {
+        // Busca preferência e serviços
+        const userSnap = await getDoc(userDocRef);
+        const preferencia = userSnap.data()?.preferenciaAtualizacao; // 'sempre', 'nunca' ou undefined
+
+        // Busca o serviço na coleção "servicos" (ou modelos_fixos, ajuste conforme o seu uso)
+        const q = query(collection(db, "servicos"), where("uid", "==", uid));
+        const querySnapshot = await getDocs(q);
+        let servicoEncontrado = null;
+
+        querySnapshot.forEach(doc => {
+            if (doc.data().nome.toLowerCase() === descricao.toLowerCase()) {
+                servicoEncontrado = { id: doc.id, ...doc.data() };
+            }
+        });
+
+        // Se não houver serviço salvo ou o valor for o mesmo, encerra
+        if (!servicoEncontrado || servicoEncontrado.valor === valorNovo) return;
+
+        // Se o usuário já marcou "Sempre" ou "Nunca"
+        if (preferencia === 'sempre') {
+            await updateDoc(doc(db, "servicos", servicoEncontrado.id), { valor: valorNovo });
+            return window.mostrarTutorialAjuste();
+        }
+        if (preferencia === 'nunca') {
+            return window.mostrarTutorialAjuste();
+        }
+
+        // Se não tem preferência, abre o SweetAlert2 com checkbox
+        const result = await Swal.fire({
+            title: 'Atualizar valor do modelo?',
+            html: `
+                <p style="font-size: 14px; color: #555;">
+                    O valor para <b>${servicoEncontrado.nome}</b> é diferente do salvo (R$ ${servicoEncontrado.valor.toFixed(2)}).
+                </p>
+                <div style="margin-top: 15px; font-size: 13px;">
+                    <input type="checkbox" id="swal-pref-check" style="cursor:pointer;">
+                    <label for="swal-pref-check" style="cursor:pointer;"> Não perguntar novamente</label>
+                </div>
+            `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sim, atualizar padrão',
+            cancelButtonText: 'Não, só desta vez',
+            confirmButtonColor: 'var(--success)',
+            cancelButtonColor: 'var(--danger)'
+        });
+
+        const marcarNovamente = document.getElementById('swal-pref-check').checked;
+
+        if (result.isConfirmed) {
+            // Atualiza o modelo
+            await updateDoc(doc(db, "servicos", servicoEncontrado.id), { valor: valorNovo });
+            if (marcarNovamente) await updateDoc(userDocRef, { preferenciaAtualizacao: 'sempre' });
+        } else {
+            // Não atualiza o modelo
+            if (marcarNovamente) await updateDoc(userDocRef, { preferenciaAtualizacao: 'nunca' });
+        }
+
+        // Após qualquer decisão, mostra como fazer manualmente no futuro
+        window.mostrarTutorialAjuste();
+
+    } catch (e) {
+        console.error("Erro na verificação de modelo:", e);
+    }
+};
+
+// Função de Tutorial/Instrução
+window.mostrarTutorialAjuste = () => {
+    Swal.fire({
+        title: 'Dica de Gestão',
+        text: 'Você pode gerenciar todos os seus serviços na aba "Perfil" clicando no botão "Meu serviço/Produtos" .',
+        icon: 'info',
+        confirmButtonText: 'Entendi',
+        confirmButtonColor: 'var(--success)'
+    });
+};
+
+// Função do Pop-up Educativo
+window.mostrarTutorialAjuste = () => {
+    Swal.fire({
+        title: 'Como gerenciar modelos',
+        text: 'Você pode alterar nomes e valores definitivos a qualquer momento na aba "Serviços" dentro do menu de configurações.',
+        icon: 'info',
+        confirmButtonText: 'Entendi',
+        confirmButtonColor: '#20B2AA'
+    });
+};
+
 // --- EDIÇÃO DE LANÇAMENTOS ---
 window.prepararEdicao = async (id) => {
     const docSnap = await getDoc(doc(db, "lancamentos", id));
@@ -618,15 +1151,48 @@ window.carregarDadosPerfil = async () => {
 };
 // CORREÇÃO: A função salvarDadosPerfil estava com erro de referência na variável 'id' que não existia no escopo. Agora ela pega o ID do usuário autenticado.
 window.salvarDadosPerfil = async () => {
-    const nome = document.getElementById("editNome").value;
-    const empresa = document.getElementById("editEmpresa").value;
-    const contato = document.getElementById("editContato").value;
-    if (!nome || !empresa) return alert("Preencha Nome e Empresa!");
+    // 1. Capturamos os elementos primeiro para testar se existem
+    const elNome = document.getElementById("editNome");
+    const elEmpresa = document.getElementById("editEmpresa");
+    const elContato = document.getElementById("editContato");
+
+    // 2. Verificação de segurança no console (aperte F12 para ver)
+    console.log("Valores atuais:", {
+        nome: elNome?.value,
+        empresa: elEmpresa?.value,
+        contato: elContato?.value
+    });
+
+    // 3. Pegamos os valores removendo espaços em branco extras
+    const nome = elNome?.value?.trim();
+    const empresa = elEmpresa?.value?.trim();
+    const contato = elContato?.value?.trim();
+
+    // 4. Se o JS não encontrar o valor, ele para aqui com um aviso claro
+    if (!nome || !empresa) {
+        return Swal.fire('Atenção', 'Nome e Empresa são obrigatórios!', 'warning');
+    }
+
     try {
-        await setDoc(doc(db, "usuarios", auth.currentUser.uid), { nome, empresa, contato, email: auth.currentUser.email }, { merge: true });
-        alert("Perfil atualizado!"); 
-        window.carregarDadosPerfil();
-    } catch (e) { window.logErroTelegram("salvarDadosPerfil", e.message); }
+        const uid = auth.currentUser.uid;
+        const email = auth.currentUser.email;
+
+        await setDoc(doc(db, "usuarios", uid), { 
+            nome, 
+            empresa, 
+            contato: contato || "", // Evita erro se contato estiver vazio
+            email 
+        }, { merge: true });
+
+        Swal.fire('Sucesso', 'Perfil atualizado com sucesso!', 'success');
+        
+        if (window.carregarDadosPerfil) {
+            window.carregarDadosPerfil();
+        }
+    } catch (e) { 
+        console.error("Erro ao salvar perfil:", e);
+        if (window.logErroTelegram) window.logErroTelegram("salvarDadosPerfil", e.message); 
+    }
 };
 // --- PWA & INSTALAÇÃO ---
 if ('serviceWorker' in navigator) {
@@ -684,8 +1250,8 @@ window.toggleSecao = (id, header) => {
     document.getElementById(id).classList.toggle('hidden'); 
     header.classList.toggle('closed'); 
 };
-                    // 1. LÓGICA DE LOGIN
-// Substitua o seubtnLogin.onclick por este:
+                    // 1. LÓGICA DE LOGIN //
+
 document.getElementById("btnLogin").onclick = async () => {
     const email = document.getElementById("email").value;
     const pass = document.getElementById("password").value;
@@ -717,14 +1283,14 @@ document.getElementById("btnLogin").onclick = async () => {
             icon: 'error',
             title: 'Falha no Acesso',
             text: mensagem,
-            confirmButtonColor: '#d33'
+            confirmButtonColor: 'var(--danger)'
         });
     }
 };
 // 2. LÓGICA DE CADASTRO
-const btnRegistrar = document.getElementById("btnRegistrar");
+    const btnRegistrar = document.getElementById("btnRegistrar");
 
-if (btnRegistrar) {
+    if (btnRegistrar) {
     btnRegistrar.onclick = async (e) => {
         // Evita que a página recarregue caso o botão esteja em um form
         if (e) e.preventDefault();
@@ -750,7 +1316,21 @@ if (btnRegistrar) {
                 createdAt: new Date()
             });
 
-            alert("Conta criada com sucesso!");
+           Swal.fire({
+    title: 'Bem-vindo(a)!',
+    text: 'Sua conta foi criada com sucesso.',
+    icon: 'success',
+    confirmButtonText: 'Começar agora',
+    confirmButtonColor: 'var(--success)',
+    background: 'var(--background)',
+    borderRadius: '20px',
+    showClass: {
+        popup: 'animate__animated animate__backInDown' // Se quiser animação extra
+    },
+    hideClass: {
+        popup: 'animate__animated animate__fadeOutUp'
+    }
+});
             
             // Tenta voltar para a tela de login visualmente
             if (typeof window.mostrarLogin === "function") {
@@ -772,7 +1352,6 @@ if (btnRegistrar) {
         }
     };
 }
-            // Abrir Modal de Perfil
 // --- CONTROLE DA INTERFACE ---
 window.abrirModalPerfil = async () => {
     // Busca dados atuais do usuário
@@ -782,12 +1361,13 @@ window.abrirModalPerfil = async () => {
         document.getElementById("editNome").value = d.nome || "";
         document.getElementById("editEmpresa").value = d.empresa || "";
         document.getElementById("editContato").value = d.contato || "";
-        document.getElementById("displayEmail").innerText = auth.currentUser.email;
+        
     }
     
     // Mostra o Drawer e o Overlay
     document.getElementById("drawerPerfil").classList.add("active");
-    document.getElementById("overlay").style.display = "block";
+    document.getElementById("overlay").style.display = "flex";
+    
 };
 // Fechar Modal de Perfil
 window.fecharDrawer = () => {
@@ -822,24 +1402,21 @@ window.carregarDadosPerfil = async () => {
     try {
         if (!auth.currentUser) return;
 
-        // 1. Atualiza o email na tela imediatamente
-        const campoEmail = document.getElementById("perfilEmail");
-        if (campoEmail) campoEmail.innerText = auth.currentUser.email;
-
-        // 2. Busca dados extras no Firestore
         const userSnap = await getDoc(doc(db, "usuarios", auth.currentUser.uid));
         
         if (userSnap.exists()) {
             const d = userSnap.data();
             
-            // Atualiza os inputs do formulário
+            // Preenche os campos de input
             if (document.getElementById("editNome")) document.getElementById("editNome").value = d.nome || "";
             if (document.getElementById("editEmpresa")) document.getElementById("editEmpresa").value = d.empresa || "";
             if (document.getElementById("editContato")) document.getElementById("editContato").value = d.contato || "";
             
-            // Atualiza o nome de exibição no topo do modal
-            if (document.getElementById("perfilNomeExibicao")) {
-                document.getElementById("perfilNomeExibicao").innerText = d.nome || "Usuário";
+            // ATUALIZA O TEXTO DE EXIBIÇÃO NO TOPO
+            const displayNome = document.getElementById("perfilNomeExibicao");
+            if (displayNome) {
+                // Aqui você escolhe: quer mostrar o Nome ou a Empresa no topo?
+                displayNome.innerText = d.empresa || "Usuário";
             }
         }
     } catch (e) {
@@ -848,22 +1425,21 @@ window.carregarDadosPerfil = async () => {
 };
 
 // Salvar Dados do Perfil
+
 window.salvarDadosPerfil = async () => {
     const nome = document.getElementById("editNome").value;
     const empresa = document.getElementById("editEmpresa").value;
     const contato = document.getElementById("editContato").value;
 
-    // 1. Validação Visual com SweetAlert
     if (!nome || !empresa) {
         return Swal.fire({
             icon: 'warning',
             title: 'Campos Obrigatórios',
             text: 'Por favor, preencha o Nome e a Empresa.',
-            confirmButtonColor: 'var(--primary)'
+            confirmButtonColor: 'var(--success)'
         });
     }
 
-    // 2. Mostrar estado de "Carregando"
     Swal.fire({
         title: 'A guardar alterações...',
         allowOutsideClick: false,
@@ -874,7 +1450,7 @@ window.salvarDadosPerfil = async () => {
         const user = auth.currentUser;
         if (!user) throw new Error("Usuário não autenticado.");
 
-        // 3. Gravação no Firestore
+        // 1. Gravação no Firestore
         await setDoc(doc(db, "usuarios", user.uid), {
             nome: nome,
             empresa: empresa,
@@ -883,37 +1459,36 @@ window.salvarDadosPerfil = async () => {
             ultimaAtualizacao: new Date().toISOString()
         }, { merge: true });
 
-        // 4. Sucesso: Fecha o carregando e mostra o Toast
+        // 2. ATUALIZAÇÃO DA TELA (O QUE ESTAVA FALTANDO)
+        // Aqui atualizamos o nome no topo do perfil e o nome da empresa
+        const elementoTopo = document.getElementById("perfilNomeExibicao");
+        const elementoNomePrincipal = document.getElementById("perfilNome");
+        
+        if (elementoTopo) elementoTopo.innerText = empresa; // Exibe a Empresa no topo
+        if (elementoNomePrincipal) elementoNomePrincipal.innerText = nome; // Nome da pessoa abaixo
+
         Swal.close();
         
-        // Fecha o acordeão e o menu lateral
+        // Fecha a seção de edição (acordeão)
         if(document.getElementById("secaoEdicao")) {
             document.getElementById("secaoEdicao").classList.remove("aberto");
         }
-        window.fecharDrawer();
-
-        const Toast = Swal.mixin({
-            toast: true,
-            position: 'top-end',
-            showConfirmButton: false,
-            timer: 3000,
-            timerProgressBar: true
-        });
+        
+        // Opcional: fechar o menu lateral
+        // window.fecharDrawer();
 
         Toast.fire({
             icon: 'success',
-            title: 'Perfil atualizado com sucesso!'
+            title: 'Perfil e Empresa atualizados!'
         });
 
     } catch (error) {
-        // 5. Erro: Log no Telegram e aviso visual
         window.logErroTelegram("Salvar_Perfil", error.message);
-        
         Swal.fire({
             icon: 'error',
             title: 'Erro ao Salvar',
-            text: 'Não foi possível atualizar o perfil. O erro foi enviado ao suporte.',
-            confirmButtonColor: '#d33'
+            text: 'Não foi possível atualizar o perfil.',
+            confirmButtonColor: '#ef4444'
         });
     }
 };
@@ -925,31 +1500,76 @@ window.abrirGerenciadorFixos = async function() {
 };
 window.fecharGerenciadorFixos = function() {
     document.getElementById('modalGerenciadorFixos').style.display = 'none';
+    window.limparFormModeloFixo() 
+    
 };
+window.limparFormModeloFixo = function(){
+    const campoNome = document.getElementById("fixoNome");
+    const campoValor = document.getElementById("fixoValor");
+    const campoDia = document.getElementById("fixoDia");
+    const btnSalvar = document.getElementById("btnSalvarModeloFixo");
+    const form = document.getElementById("formCadastrarModeloFixo");
+
+    // 2. Reseta os valores dos campos
+    if (campoNome) campoNome.value = "";
+    if (campoValor) campoValor.value = "";
+    if (campoDia) campoDia.value = "";
+
+    // 3. Reseta o botão de salvar (caso estivesse em modo "Atualizar")
+    if (btnSalvar) {
+        btnSalvar.removeAttribute("data-id-edicao");
+        btnSalvar.innerHTML = '<i class="fa-solid fa-plus"></i> Cadastrar Modelo';
+    }
+    
+    // 4. Se houver o atributo de edição no container do formulário, remove também
+    if (form) {
+        form.removeAttribute("data-id-edicao");
+    }
+
+}
 
 // Salvar Modelo
-document.getElementById('formCadastrarModeloFixo').onsubmit = async (e) => {
-    e.preventDefault();
-    const user = auth.currentUser;
-    if (!user) return;
+window.salvarModeloFixo = async () => {
+    const form = document.getElementById("formCadastrarModeloFixo");
+    const idEdicao = form.getAttribute("data-id-edicao");
+    
+    const nome = document.getElementById("fixoNome").value;
+    const valor = parseFloat(document.getElementById("fixoValor").value);
+    const dia = parseInt(document.getElementById("fixoDia").value);
+
+    if (!nome || isNaN(valor) || isNaN(dia)) {
+        return Swal.fire('Atenção', 'Preencha todos os campos corretamente.', 'warning');
+    }
 
     try {
-        const novoModelo = {
-            uid: user.uid,
-            nome: document.getElementById('fixoNome').value,
-            valor: parseFloat(document.getElementById('fixoValor').value),
-            dia: parseInt(document.getElementById('fixoDia').value),
-            dataCriacao: new Date()
+        const uid = auth.currentUser.uid;
+        const dados = {
+            uid: uid,
+            nome: nome,
+            valor: valor,
+            dia: dia,
+            categoria: window.identificarCategoriaPelaDescricao(nome) // Usa sua lógica de categoria
         };
 
-        await addDoc(collection(db, "modelos_fixos"), novoModelo);
-        document.getElementById('formCadastrarModeloFixo').reset();
-        await window.carregarModelosFixos();
+        if (idEdicao) {
+            // MODO EDIÇÃO
+            await updateDoc(doc(db, "modelos_fixos", idEdicao), dados);
+            form.removeAttribute("data-id-edicao");
+            document.getElementById("btnSalvarModeloFixo").innerHTML = '<i class="fa-solid fa-plus"></i> Cadastrar Modelo';
+            Toast.fire({ icon: 'success', title: 'Modelo atualizado!' });
+        } else {
+            // MODO NOVO CADASTRO
+            await addDoc(collection(db, "modelos_fixos"), { ...dados, dataCriacao: new Date() });
+            Toast.fire({ icon: 'success', title: 'Modelo cadastrado!' });
+        }
+        window.limparFormModeloFixo(); // Aquela função que limpa inputs e reseta o botão
+        window.carregarModelosFixos(); // Recarrega a lista abaixo para mostrar o novo/editado
+
     } catch (e) {
         window.logErroTelegram("salvarModeloFixo", e.message);
+        Swal.fire('Erro', 'Não foi possível salvar o modelo.', 'error');
     }
 };
-
 // Listar Modelos
 window.carregarModelosFixos = async function() {
     const container = document.getElementById('listaModelosSalvos');
@@ -967,14 +1587,15 @@ window.carregarModelosFixos = async function() {
             return;
         }
 
-        snapshot.forEach(docSnap => {
+
+    snapshot.forEach(docSnap => {
     const item = docSnap.data();
     container.innerHTML += `
         <div style="display: flex; justify-content: space-between; align-items: center; background: white; padding: 12px; border-radius: 10px; margin-bottom: 8px; border: 1px solid #efefef;">
-            <div style="line-height: 1.2; flex: 1;">
-                <strong style="font-size: 14px;">${item.nome}</strong><br>
-                <small style="color: #64748b;">Dia ${item.dia} • R$ ${item.valor.toFixed(2)}</small>
-            </div>
+            <div onclick="window.prepararEdicaoModeloFixo('${docSnap.id}')" style="line-height: 1.2; flex: 1; cursor: pointer;">
+    <strong style="font-size: 14px;">${item.nome}</strong><br>
+    <small style="color: #64748b;">Dia ${item.dia} • R$ ${item.valor.toFixed(2)}</small>
+</div>
             <div style="display: flex; gap: 10px;">
                 <button onclick="window.lancarModeloNoMes('${item.nome}', ${item.valor}, ${item.dia})" style="background: #e8f5e9; border: none; color: #2e7d32; padding: 8px; border-radius: 5px; cursor: pointer;">
                     <i class="fa-solid fa-file-invoice-dollar"></i> Lançar
@@ -1036,48 +1657,45 @@ window.excluirServico = async (id) => {
 };
 
 // Lançar Modelo no Mês Selecionado e nos Consecutivos
-window.lancarModeloNoMes = async (nome, valor, dia) => {
-    const user = auth.currentUser;
-    const mesSelecionado = document.getElementById("monthSelect").value;
-    if (!user) return;
+window.lancarModeloNoMes = async (nome, valor, diaVencimento) => {
+    const hoje = new Date();
+    const diaAtual = hoje.getDate();
+    const anoAtual = hoje.getFullYear();
+    
+    // PEGA O MÊS EXATAMENTE COMO O SEU SELECT DE FILTRO USA (ex: "Março" ou "03")
+    const mesFiltro = document.getElementById("monthSelect").value;
 
-    // Descobrimos o índice do mês atual para saber quantos meses restam no ano
-    const indiceMesInicial = months.indexOf(mesSelecionado);
-    const anoAtual = new Date().getFullYear();
+    // Lógica de Status (Ajustada para bater com seu CSS "Pago" ou "Pendente")
+    let statusFinal = (diaAtual >= diaVencimento) ? "Pago" : "Pendente";
+
+    // ID Composto para evitar duplicidade
+    const idComposto = `${nome.replace(/\s+/g, '')}${String(diaVencimento).padStart(2, '0')}${mesFiltro}${anoAtual}`;
 
     try {
-        // Criamos o objeto base do lançamento
-        const novoDocBase = {
-            userId: user.uid,
+        const uid = auth.currentUser.uid;
+        
+        await setDoc(doc(db, "lancamentos", idComposto), {
+            userId: uid,
             descricao: nome,
-            valor: valor,
-            cliente: "Fixo Cadastrado",
+            valor: parseFloat(valor),
+            data: `${anoAtual}-${mesFiltro}-${String(diaVencimento).padStart(2, '0')}`, // Ajuste conforme seu padrão
             tipo: "saida",
-            status: "Pago",
-            isFixa: true,
-            // Geramos a data padrão baseada no dia do modelo e no mês selecionado
-            data: `${anoAtual}-${String(indiceMesInicial + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
-        };
+            status: statusFinal, // Agora com inicial Maiúscula para bater com seu card
+            mes: mesFiltro,      // ISSO AQUI FAZ APARECER NA QUERY
+            origem: "fixo",
+            dataCriacao: new Date()
+        });
 
-        // Loop para lançar no mês selecionado e nos consecutivos (igual ao seu modal principal)
-        for (let i = indiceMesInicial; i < months.length; i++) {
-            await addDoc(collection(db, "lancamentos"), { 
-                ...novoDocBase, 
-                mes: months[i],
-                // Ajusta a string de data para cada mês do loop
-                data: `${anoAtual}-${String(i + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
-            });
-        }
+        Toast.fire({ icon: 'success', title: `Lançado em ${mesFiltro}!` });
 
-        alert(`${nome} lançado com sucesso de ${mesSelecionado} até Dezembro!`);
-        window.fecharGerenciadorFixos();
-        window.carregarLancamentos(); // Atualiza a tela
+        // Chama a atualização da tabela
+        await window.carregarLancamentos();
+
     } catch (e) {
-        window.logErroTelegram("lancarModeloNoMes_Replicado", e.message);
-        alert("Erro ao lançar. O suporte foi avisado.");
+        console.error(e);
+        Swal.fire('Erro', 'Falha ao salvar lançamento.', 'error');
     }
 };
-
 // --- GESTÃO DE SERVIÇOS ---
 window.abrirGerenciadorServicos = () => {
     document.getElementById('modalGerenciadorServicos').style.display = 'flex';
@@ -1086,8 +1704,15 @@ window.abrirGerenciadorServicos = () => {
 
 window.fecharGerenciadorServicos = () => {
     document.getElementById('modalGerenciadorServicos').style.display = 'none';
-};
+    document.getElementById("servicoNome").value = "";
+    document.getElementById("servicoValor").value = "";
+    document.getElementById('modal-servicos').style.display = 'none';
 
+    const form = document.getElementById('formCadastrarServico');
+    form.reset();
+    form.removeAttribute('data-id-edicao');
+    form.querySelector('button').innerHTML = '<i class="fa-solid fa-plus"></i> Cadastrar Serviço';
+};
 // Salvar Serviço
 document.getElementById('formCadastrarServico').onsubmit = async (e) => {
     e.preventDefault();
@@ -1106,18 +1731,102 @@ document.getElementById('formCadastrarServico').onsubmit = async (e) => {
 // Carregar Lista para Gestão e para o Datalist
 window.carregarServicos = async () => {
     const container = document.getElementById('listaServicosSalvos');
+    if (!auth.currentUser) return;
+
     const q = query(collection(db, "servicos"), where("uid", "==", auth.currentUser.uid));
     const snap = await getDocs(q);
     
     container.innerHTML = '';
+    
+    // --- NOVIDADE: Limpa e atualiza o cache para o gráfico ---
+    listaServicosCache = []; 
+
     snap.forEach(d => {
         const s = d.data();
-        container.innerHTML += `
-            <div style="display:flex; justify-content:space-between; padding:10px; border-bottom:1px solid #eee;">
-                <span>${s.nome} - <b>R$ ${s.valor.toFixed(2)}</b></span>
-                <button onclick="window.excluirServico('${d.id}')" style="border:none; background:none; color:red;"><i class="fa-solid fa-trash"></i></button>
-            </div>`;
+        
+        // Alimenta o cache com o nome em minúsculo para comparação precisa
+        listaServicosCache.push(s.nome.toLowerCase().trim());
+
+        const div = document.createElement('div');
+        div.className = 'servico-item';
+        div.style = "display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid #eee;";
+        
+        div.innerHTML = `
+            <div onclick="window.prepararEdicaoServico('${d.id}')" style="cursor:pointer; flex-grow:1;">
+                <strong style="display:block;">${s.nome}</strong>
+                <small style="color:var(--success);">R$ ${parseFloat(s.valor).toFixed(2)}</small>
+            </div>
+            <button onclick="window.excluirServico('${d.id}')" style="background:none; border:none; color:var(--danger); padding:5px 10px;">
+                <i class="fa-solid fa-trash"></i>
+            </button>
+        `;
+        container.appendChild(div);
     });
+
+    // Se você tiver uma função de atualizar o gráfico, chame-a aqui para sincronizar
+    if (typeof window.renderizarGraficos === 'function') {
+        window.renderizarGraficos();
+    }
+};
+
+window.prepararEdicaoServico = async (id) => {
+    try {
+        const docSnap = await getDoc(doc(db, "servicos", id));
+        if (docSnap.exists()) {
+            const s = docSnap.data();
+            
+            // Preenche os inputs do seu index.html
+            document.getElementById('servicoNome').value = s.nome;
+            document.getElementById('servicoValor').value = s.valor;
+            
+            // Muda o texto do botão para indicar edição
+            const btnSalvar = document.querySelector('#formCadastrarServico button');
+            btnSalvar.innerHTML = '<i class="fa-solid fa-save"></i> Atualizar Serviço';
+            
+            // Guarda o ID no formulário para usarmos no salvamento
+            document.getElementById('formCadastrarServico').setAttribute('data-id-edicao', id);
+            
+            Toast.fire({ icon: 'info', title: 'Editando: ' + s.nome });
+        }
+    } catch (e) {
+        console.error("Erro ao carregar serviço:", e);
+    }
+};
+
+document.getElementById('formCadastrarServico').onsubmit = async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const idEdicao = form.getAttribute('data-id-edicao');
+    
+    const nome = document.getElementById('servicoNome').value;
+    const valor = parseFloat(document.getElementById('servicoValor').value);
+
+    try {
+        const dados = {
+            uid: auth.currentUser.uid,
+            nome: nome,
+            valor: valor
+        };
+
+        if (idEdicao) {
+            // MODO EDIÇÃO
+            await updateDoc(doc(db, "servicos", idEdicao), dados);
+            form.removeAttribute('data-id-edicao');
+            form.querySelector('button').innerHTML = '<i class="fa-solid fa-plus"></i> Cadastrar Serviço';
+            Toast.fire({ icon: 'success', title: 'Serviço atualizado!' });
+        } else {
+            // MODO NOVO
+            await addDoc(collection(db, "servicos"), dados);
+            Toast.fire({ icon: 'success', title: 'Serviço cadastrado!' });
+        }
+
+        form.reset();
+        window.carregarServicos();
+        window.atualizarDatalistServicos(); // Mantém seus lançamentos atualizados
+
+    } catch (e) {
+        Swal.fire('Erro', 'Não foi possível salvar o serviço.', 'error');
+    }
 };
 
 // ATUALIZA O DATALIST (Sugestões enquanto digita)
@@ -1257,6 +1966,37 @@ window.verificarGastoFixoInteligente = async (nomeOriginal) => {
     }
 };
 
+window.prepararEdicaoModeloFixo = async (id) => {
+    try {
+        const docSnap = await getDoc(doc(db, "modelos_fixos", id));
+        if (docSnap.exists()) {
+            const dado = docSnap.data();
+            
+            // 1. Preenche os inputs específicos do menu de modelos fixos
+            // Certifique-se de que os IDs abaixo batem com o seu HTML
+            document.getElementById("fixoNome").value = dado.nome || "";
+            document.getElementById("fixoValor").value = dado.valor || "";
+            document.getElementById("fixoDia").value = dado.dia || "";
+
+            // 2. Transforma o botão de "Cadastrar" em "Atualizar"
+            // Use o ID ou classe do botão que fica dentro do menu de fixos
+            const btnAcao = document.getElementById("btnSalvarModeloFixo");
+            btnAcao.innerHTML = '<i class="fa-solid fa-save"></i> Atualizar Modelo';
+            
+            // 3. Marca o formulário com o ID de quem está sendo editado
+            const form = document.getElementById("formCadastrarModeloFixo");
+            form.setAttribute("data-id-edicao", id);
+
+            // Rola para o topo do formulário para o usuário ver que preencheu
+            form.scrollIntoView({ behavior: 'smooth' });
+
+            Toast.fire({ icon: 'info', title: 'Editando: ' + dado.nome });
+        }
+    } catch (e) {
+        window.logErroTelegram("prepararEdicaoModeloFixo", e.message);
+    }
+};
+
 let instanciaEntradas = null;
 let instanciaSaidas = null;
 
@@ -1392,7 +2132,21 @@ window.aplicarCategoriaPorPadrao = async (palavraChave, novaCategoria) => {
 
         await Promise.all(promessas);
         
-        alert(`Automação Ativada!\n${contador} itens antigos atualizados.\nNovos itens com "${palavraChave}" serão "${novaCategoria}" automaticamente.`);
+        Swal.fire({
+    title: 'Automação Ativada!',
+    html: `
+        <p style="font-size: 1.1em; color: #64748b;">
+            <b>${contador}</b> itens antigos atualizados.
+        </p>
+        <p style="font-size: 0.9em; margin-top: 10px; color: #94a3b8;">
+            Novos itens com "<b>${palavraChave}</b>" serão "<b>${novaCategoria}</b>" automaticamente.
+        </p>
+    `,
+    icon: 'success',
+    confirmButtonText: 'Entendido',
+    confirmButtonColor: 'var(--success)', // Um verde esmeralda moderno
+    borderRadius: '15px'           // Para combinar com seu novo design arredondado
+});
         
         window.atualizarGraficosBarras();
     } catch (e) {
@@ -1422,11 +2176,43 @@ window.gerarSugestoesCategorias = async () => {
         
         // 3. Ao clicar na palavra, ele abre a pergunta de migração
         btn.onclick = () => {
-            const novaCat = prompt(`Deseja criar a categoria "${palavra}" no gráfico para todos os lançamentos que contêm essa palavra?`, palavra);
-            if (novaCat) {
-                window.aplicarCategoriaPorPadrao(palavra, novaCat);
+    Swal.fire({
+        title: 'Criar Nova Categoria',
+        text: `Deseja mapear todos os lançamentos que contêm "${palavra}" para uma categoria específica no gráfico?`,
+        input: 'text',
+        inputValue: palavra, // Já deixa a palavra sugerida no campo
+        inputPlaceholder: 'Digite o nome da categoria...',
+        showCancelButton: true,
+        confirmButtonText: 'Aplicar Agora',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: 'var(--success)',
+        cancelButtonColor: 'var(--danger)',
+        borderRadius: '15px',
+        inputAttributes: {
+            autocapitalize: 'off'
+        },
+        preConfirm: (valor) => {
+            if (!valor) {
+                Swal.showValidationMessage('Você precisa digitar um nome para a categoria!');
             }
-        };
+            return valor;
+        }
+    }).then((result) => {
+        if (result.isConfirmed && result.value) {
+            // Chama sua função passando a palavra e a nova categoria digitada
+            window.aplicarCategoriaPorPadrao(palavra, result.value);
+            
+            // Feedback de que a automação começou
+            Swal.fire({
+                title: 'Processando...',
+                text: 'Estamos atualizando seus lançamentos.',
+                icon: 'info',
+                timer: 1500,
+                showConfirmButton: false
+            });
+        }
+    });
+};
         
         listaContainer.appendChild(btn);
     });
@@ -1434,10 +2220,15 @@ window.gerarSugestoesCategorias = async () => {
 // Função para identificar a categoria de um lançamento baseado na descrição e nas regras salvas
 window.identificarCategoriaPelaDescricao = (descricao) => {
     if (!descricao) return "Geral";
-    const descUpper = descricao.toUpperCase();
+    const descUpper = descricao.toUpperCase().trim();
     
-    // Procura nas regras salvas se alguma palavra-chave está na descrição
-    const regraEncontrada = regrasCategorias.find(regra => descUpper.includes(regra.palavra));
+    // 1. VERIFICAÇÃO DINÂMICA: O nome digitado é um serviço salvo?
+    if (listaServicosCache.includes(descUpper)) {
+        return "Serviços";
+    }
+
+    // 2. VERIFICAÇÃO ESTÁTICA: Regras de palavras-chave (Aluguel, Luz, etc)
+    const regraEncontrada = regrasCategorias.find(regra => descUpper.includes(regra.palavra.toUpperCase()));
     
     return regraEncontrada ? regraEncontrada.categoria : "Geral";
 };
@@ -1581,4 +2372,45 @@ window.mostrarSobre = async () => {
     }
 };
 
+window.limparMeusDadosAntigos = async () => {
+    // 1. Confirmação de segurança para não clicar sem querer
+    const confirmacao = await Swal.fire({
+        title: 'Tem certeza?',
+        text: "Isso apagará TODOS os seus lançamentos. Os dados do testador beta não serão afetados.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Sim, apagar tudo!',
+        cancelButtonText: 'Cancelar'
+    });
 
+    if (!confirmacao.isConfirmed) return;
+
+    const uid = auth.currentUser.uid; // Pega o seu ID atual
+    console.log("Iniciando limpeza para o UID:", uid);
+
+    try {
+        // 2. Busca todos os documentos onde o userId é o SEU
+        const q = query(collection(db, "lancamentos"), where("userId", "==", uid));
+        const snap = await getDocs(q);
+
+        if (snap.empty) {
+            return Swal.fire('Vazio', 'Você não tem dados para apagar.', 'info');
+        }
+
+        // 3. Deleta um por um
+        const promessasDelecao = snap.docs.map(docSnap => deleteDoc(doc(db, "lancamentos", docSnap.id)));
+        
+        await Promise.all(promessasDelecao);
+
+        Swal.fire('Limpeza Concluída', `${snap.size} registros foram removidos.`, 'success');
+        
+        // 4. Atualiza a tela
+        if (window.carregarLancamentos) window.carregarLancamentos();
+
+    } catch (e) {
+        console.error("Erro na limpeza:", e);
+        Swal.fire('Erro', 'Falha ao apagar dados.', 'error');
+    }
+};
