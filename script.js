@@ -43,7 +43,7 @@ window.solicitarNotificacao = () => {
         Notification.requestPermission();
     }
 };
-
+Swal
 const recuperarSenha = (email) => {
     sendPasswordResetEmail(auth, email)
         .then(() => {
@@ -81,7 +81,8 @@ const db = initializeFirestore(app, {
 // 3. Constantes e Utilitários
 const months = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
-// Toast configurado globalmente
+// Toast configurado globalmente//
+
 const Toast = Swal.mixin({
     toast: true,
     position: 'top-end',
@@ -117,7 +118,7 @@ async function cadastrarUsuario(email, senha) {
             title: 'Sucesso!',
             html: `Conta criada para <b>${email}</b>.<br><br>Enviamos um link de confirmação. Você precisa validar seu e-mail para acessar o sistema.`,
             icon: 'success',
-            confirmButtonColor: '#28a745'
+            confirmButtonColor: 'var(--success)'
         });
 
     } catch (error) {
@@ -491,6 +492,58 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
+//ALTERAÇÃO DE TEMA
+// Função para aplicar o tema e salvar a preferência
+window.aplicarTema = (tema) => {
+    const icon = document.getElementById('dark-icon');
+    const status = document.getElementById('status-dark');
+
+    if (tema === 'dark') {
+        document.body.classList.add('dark-theme');
+        if (icon) icon.classList.replace('fa-moon', 'fa-sun');
+        if (status) status.innerText = "Ativado";
+        localStorage.setItem('tema-preferido', 'dark');
+    } else {
+        document.body.classList.remove('dark-theme');
+        if (icon) icon.classList.replace('fa-sun', 'fa-moon');
+        if (status) status.innerText = "Desativado";
+        localStorage.setItem('tema-preferido', 'light');
+    }
+    
+    // Atualiza os gráficos para as cores de fonte novas (claro/escuro)
+    if (window.atualizarGraficosBarras) window.atualizarGraficosBarras();
+};
+
+// Função do Botão (Toggle manual)
+window.toggleDarkMode = () => {
+    const isDark = document.body.classList.contains('dark-theme');
+    window.aplicarTema(isDark ? 'light' : 'dark');
+};
+
+// LOGICA DE DETECÇÃO (Rodar ao carregar o App)
+const inicializarTema = () => {
+    const preferênciaSalva = localStorage.getItem('tema-preferido');
+    const darkModeSistema = window.matchMedia('(prefers-color-scheme: dark)');
+
+    if (preferênciaSalva) {
+        // Se o usuário já escolheu manualmente no seu app, usa essa escolha
+        window.aplicarTema(preferênciaSalva);
+    } else {
+        // Se não tem escolha salva, segue o que estiver no sistema do celular
+        window.aplicarTema(darkModeSistema.matches ? 'dark' : 'light');
+    }
+
+    // Escuta mudanças no sistema em tempo real (ex: o celular escurece ao pôr do sol)
+    darkModeSistema.addEventListener('change', e => {
+        if (!localStorage.getItem('tema-preferido')) {
+            window.aplicarTema(e.matches ? 'dark' : 'light');
+        }
+    });
+};
+
+// Chame isso dentro do seu DOMContentLoaded ou no final do arquivo
+document.addEventListener('DOMContentLoaded', inicializarTema);
+
 window.recuperarSenha = async () => {
     const emailInput = document.getElementById('email-login')?.value;
 
@@ -535,31 +588,142 @@ function configurarMeses() {
     }
 }
 // --- NAVEGAÇÃO ---
+// 1. FUNÇÃO DE NAVEGAÇÃO (Chame isso quando trocar de aba)
+window.atualizarBotaoNavegação = (pagina) => {
+    const btn = document.getElementById('btn-l');
+    const iHome = document.getElementById('icon-home');
+    const iSun = document.getElementById('icon-tema-sun');
+    const iMoon = document.getElementById('icon-tema-moon');
+
+    if (pagina === 'perfil') {
+        // Inicia o giro
+        btn.classList.add('btn-estado-perfil');
+        
+        // Troca o ícone (Ocorre durante o giro)
+        iHome.style.display = 'none';
+        const isDark = document.body.classList.contains('dark-theme');
+        if (isDark) {
+            iMoon.style.display = 'block';
+            iSun.style.display = 'none';
+        } else {
+            iSun.style.display = 'block';
+            iMoon.style.display = 'none';
+        }
+    } else {
+        // Volta ao estado original
+        btn.classList.remove('btn-estado-perfil');
+        
+        // Retorna o "+"
+        iHome.style.display = 'block';
+        iSun.style.display = 'none';
+        iMoon.style.display = 'none';
+    }
+};
+
+// 2. FUNÇÃO DE CLIQUE (Decide o que o botão faz)
+window.gerenciarAcaoBotao = () => {
+    const btn = document.getElementById('btn-l');
+    
+    if (btn.classList.contains('btn-estado-perfil')) {
+        // Se estiver girado (Perfil), ele alterna o tema
+        window.alternarTemaGestto();
+    } else {
+        // Se estiver normal (Home), abre seu formulário/modal
+        if (window.abrirModalLancamento) window.abrirModalLancamento();
+    }
+};
+
+// 3. FUNÇÃO DE TROCA DE TEMA (O Toggle)
+window.alternarTemaGestto = () => {
+    const body = document.body;
+    body.classList.toggle('dark-theme');
+    
+    // Salva a preferência
+    const novoTema = body.classList.contains('dark-theme') ? 'dark' : 'light';
+    localStorage.setItem('tema-preferido', novoTema);
+    
+    // Atualiza o ícone visualmente NA HORA (dentro do botão girado)
+    const iSun = document.getElementById('icon-tema-sun');
+    const iMoon = document.getElementById('icon-tema-moon');
+    
+    if (novoTema === 'dark') {
+        iMoon.style.display = 'block';
+        iSun.style.display = 'none';
+    } else {
+        iSun.style.display = 'block';
+        iMoon.style.display = 'none';
+    }
+
+    // Atualiza os gráficos para as novas cores de texto
+    if (window.atualizarGraficosBarras) window.atualizarGraficosBarras();
+};
+
 window.navegar = (pagina) => {
-    // Controla as telas
+    // 1. Controle de Telas
     document.getElementById("tela-lancamentos").style.display = pagina === 'home' ? 'block' : 'none';
     document.getElementById("perfilSection").style.display = pagina === 'perfil' ? 'block' : 'none';
     
-    // Controla as classes ativas na Navbar
+    // 2. Controle da Navbar
     document.getElementById("nav-home").classList.toggle("active", pagina === 'home');
     document.getElementById("btnConfiguracoes").classList.toggle("active", pagina === 'perfil');
 
-    // --- NOVA LÓGICA DA ENGRENAGEM ---
+    const btnL = document.getElementById("btn-l");
+    const iconPlus = document.getElementById("icon-plus"); 
+    const iconTema = document.getElementById("icon-tema"); 
     const engrenagem = document.getElementById("btn-settings");
-    if (engrenagem) {
-        if (pagina === 'perfil') {
+
+    if (pagina === 'perfil') {
+        // --- ESTADO PERFIL ---
+        if (btnL) {
+            btnL.classList.add("btn-principal-perfil"); // Gira o botão
+            if(iconPlus) iconPlus.style.display = "none";
+            if(iconTema) {
+                iconTema.style.display = "block";
+                // Ajusta o ícone inicial do tema ao entrar no perfil
+                const isDark = document.body.classList.contains('dark-theme');
+                iconTema.className = isDark ? "fa-solid fa-moon" : "fa-solid fa-sun";
+            }
+        }
+        
+        if (engrenagem) {
             engrenagem.style.display = "flex";
-            // Remove a classe e adiciona de novo para reiniciar a animação
-            engrenagem.classList.remove("animacao-redemoinho");
-            void engrenagem.offsetWidth; // Truque para "resetar" o elemento no navegador
             engrenagem.classList.add("animacao-redemoinho");
+        }
+        window.carregarDadosPerfil();
+
+    } else {
+        // --- ESTADO HOME ---
+        if (btnL) {
+            btnL.classList.remove("btn-principal-perfil"); // Desgira o botão
+            if(iconPlus) iconPlus.style.display = "block";
+            if(iconTema) iconTema.style.display = "none";
+        }
+        if (engrenagem) engrenagem.style.display = "none";
+    }
+};
+
+// 3. AÇÃO DO BOTÃO (A que você enviou, integrada)
+window.executarAcaoPrincipal = () => {
+    const btnL = document.getElementById("btn-l");
+    
+    // IMPORTANTE: A classe aqui deve ser a mesma do navegar (btn-principal-perfil)
+    if (btnL.classList.contains("btn-principal-perfil")) {
+        // Se estiver girado (Perfil), alterna o tema
+        window.toggleDarkMode(); 
+        
+        // Atualiza o ícone Sol/Lua imediatamente
+        const iconTema = document.getElementById("icon-tema");
+        const isDark = document.body.classList.contains('dark-theme');
+        if(iconTema) iconTema.className = isDark ? "fa-solid fa-moon" : "fa-solid fa-sun";
+    } else {
+        // Se estiver na Home (sem a classe de giro), abre o lançamento
+        // Verifique se o nome da sua função de abrir modal é exatamente este:
+        if (typeof window.abrirModalNovo() === 'function') {
+            window.abrirModalNovo(); // Chama a função de abrir o modal de novo lançamento
         } else {
-            engrenagem.style.display = "none";
-            engrenagem.classList.remove("animacao-redemoinho");
+            console.log("Função abrirModalLancamento não encontrada!");
         }
     }
-
-    if(pagina === 'perfil') window.carregarDadosPerfil();
 };
 // --- MODAL DE NOVO LANÇAMENTO (POP-UP) ---
 window.abrirModalNovo = () => {
@@ -604,7 +768,7 @@ window.carregarLancamentos = async () => {
                     <span class="amount">R$ ${v.toFixed(2)}</span>
                     <span class="badge ${item.status === "Pago" ? "paid" : "pending"}">${item.status}</span>
                 </div>
-                <button onclick="window.deletar('${d.id}')" style="margin-left:10px; border:none; background:none; color:red; opacity:0.3;"><i class="fa-solid fa-trash"></i></button>
+                <button onclick="window.deletar('${d.id}')" style="margin-left:10px; border:none; background:none; color:var(--danger); "><i class="fa-solid fa-trash"></i></button>
             </div>`;
             if (item.tipo === "entrada") { tE += v; eBody.innerHTML += card; } else { tS += v; sBody.innerHTML += card; }
         });
@@ -745,15 +909,15 @@ window.notificarStatusFinanceiro = async () => {
                 title: 'Resumo de Pendências',
                 html: `
                     <div style="text-align: left; font-family: sans-serif;">
-                        <div style="margin-bottom: 15px; padding: 10px; border-radius: 8px; background: #fff5f5; border-left: 5px solid #d33;">
-                            <h4 style="margin: 0 0 5px 0; color: #d33;">
+                        <div style="margin-bottom: 15px; padding: 10px; border-radius: 8px; background: var(--background); border-left: 5px solid var(--danger);">
+                            <h4 style="margin: 0 0 5px 0; color: var(--danger);">
                                 <i class="fa-solid fa-circle-xmark"></i> Atrasadas (${atrasados.length})
                             </h4>
                             <small>${atrasados.length > 0 ? atrasados.slice(0, 3).join(", ") : "Nenhuma conta vencida"}</small>
                         </div>
 
-                        <div style="padding: 10px; border-radius: 8px; background: #fffdf5; border-left: 5px solid #f39c12;">
-                            <h4 style="margin: 0 0 5px 0; color: #f39c12;">
+                        <div style="padding: 10px; border-radius: 8px; background: var(--background); border-left: 5px solid var(--warning);">
+                            <h4 style="margin: 0 0 5px 0; color: var(--warning);">
                                 <i class="fa-solid fa-clock"></i> Pendentes (${pendentes.length})
                             </h4>
                             <small>${pendentes.length > 0 ? pendentes.slice(0, 3).join(", ") : "Tudo em dia por enquanto"}</small>
@@ -806,18 +970,18 @@ window.abrirModalGestaoPendencias = async () => {
         snap.forEach(docSnap => {
             const item = docSnap.data();
             const idDoc = docSnap.id;
-            const corStatus = item.status === 'Atrasado' ? '#d33' : '#f39c12';
+            const corStatus = item.status === 'Atrasado' ? 'var(--danger)' : 'var(--warning)';
 
             container.innerHTML += `
-                <div class="transaction-card" style="border-left: 5px solid ${corStatus}; margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f9f9f9; border-radius:8px;">
+                <div class="transaction-card" style="border-left: 5px solid ${corStatus}; margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center; padding:10px; background:var(--background); border-radius:8px;">
                     <div class="info">
                         <span class="title" style="display:block; font-weight:bold;">${item.descricao}</span>
-                        <span class="category" style="font-size:12px; color:#666;">Vence dia: ${item.data.split('-')[2] || '--'}</span>
+                        <span class="category" style="font-size:12px; color:var(--text);">Vence dia: ${item.data.split('-')[2] || '--'}</span>
                     </div>
                     <div style="display:flex; align-items:center; gap:10px;">
                         <span class="amount" style="font-weight:bold;">R$ ${parseFloat(item.valor).toFixed(2)}</span>
                         <button onclick="window.confirmarPagamentoRapido('${idDoc}', '${item.descricao}')" 
-                                style="background:#28a745; color:white; border:none; padding:8px 12px; border-radius:5px; cursor:pointer;">
+                                style="background:var(--success); color:var(--text); border:none; padding:8px 12px; border-radius:5px; cursor:pointer;">
                             <i class="fa-solid fa-check"></i> Pago
                         </button>
                     </div>
@@ -1318,7 +1482,7 @@ document.getElementById("btnLogin").onclick = async () => {
 
            Swal.fire({
     title: 'Bem-vindo(a)!',
-    text: 'Sua conta foi criada com sucesso.',
+    text: 'Sua conta foi criada com sucesso!',
     icon: 'success',
     confirmButtonText: 'Começar agora',
     confirmButtonColor: 'var(--success)',
@@ -1373,6 +1537,7 @@ window.abrirModalPerfil = async () => {
 window.fecharDrawer = () => {
     document.getElementById("drawerPerfil").classList.remove("active");
     document.getElementById("overlay").style.display = "none";
+    window.toggleEdicao()
 };
         // --- NOVAS FUNÇÕES DE APOIO --- //
 
@@ -1381,14 +1546,29 @@ window.abrirTutorial = () => {
     Swal.fire({
         title: '📖 Como usar o Gestto',
         html: `
-            <div style="text-align: left; font-size: 14px;">
-                <p><b>1. Lançamentos:</b> Registre suas entradas e saídas diárias.</p>
-                <p><b>2. Gastos Fixos:</b> Marque "Fixo" para que o sistema repita o gasto nos meses seguintes automaticamente.</p>
-                <p><b>3. Categorias:</b> O sistema classifica seus gastos pela descrição (ex: "Aluguel" vai para moradia).</p>
+            <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                <iframe 
+                    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;"
+                    src="" 
+                    title="Tutorial Gestto"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowfullscreen>
+                </iframe>
+            </div>
+
+            <div style="text-align: left; font-size: 14px; color: var(--text); line-height: 1.6;">
+                <p style="margin-bottom: 8px;"><i class="fa-solid fa-plus-circle" style="color: var(--primary);"></i> <b>Lançamentos:</b> Registre suas entradas e saídas diárias no botão principal.</p>
+                <p style="margin-bottom: 8px;"><i class="fa-solid fa-arrows-rotate" style="color: var(--warning);"></i> <b>Gastos Fixos:</b> Marque "Fixo" para repetir o gasto nos meses seguintes.</p>
+                <p><i class="fa-solid fa-tags" style="color: var(--success);"></i> <b>Categorias:</b> O sistema classifica seus gastos automaticamente pela descrição.</p>
             </div>
         `,
-        icon: 'info',
-        confirmButtonText: 'Entendi!'
+        showCloseButton: true,
+        confirmButtonText: 'Entendi!',
+        confirmButtonColor: '#20B2AA', // Cor --primary do seu styles.css
+        width: '95%',
+        customClass: {
+            popup: 'log-window-clean' // Usando sua classe de estilo do CSS
+        }
     });
 };
 // Função para contatar o suporte via WhatsApp
@@ -1475,7 +1655,7 @@ window.salvarDadosPerfil = async () => {
         }
         
         // Opcional: fechar o menu lateral
-        // window.fecharDrawer();
+        window.fecharDrawer();
 
         Toast.fire({
             icon: 'success',
@@ -1591,13 +1771,13 @@ window.carregarModelosFixos = async function() {
     snapshot.forEach(docSnap => {
     const item = docSnap.data();
     container.innerHTML += `
-        <div style="display: flex; justify-content: space-between; align-items: center; background: white; padding: 12px; border-radius: 10px; margin-bottom: 8px; border: 1px solid #efefef;">
+        <div style="display: flex; justify-content: space-between; align-items: center; background: var(--white); padding: 12px; border-radius: 10px; margin-bottom: 8px; border: var(--border);">
             <div onclick="window.prepararEdicaoModeloFixo('${docSnap.id}')" style="line-height: 1.2; flex: 1; cursor: pointer;">
     <strong style="font-size: 14px;">${item.nome}</strong><br>
-    <small style="color: #64748b;">Dia ${item.dia} • R$ ${item.valor.toFixed(2)}</small>
+    <small style="color: var(--text);">Dia ${item.dia} • R$ ${item.valor.toFixed(2)}</small>
 </div>
             <div style="display: flex; gap: 10px;">
-                <button onclick="window.lancarModeloNoMes('${item.nome}', ${item.valor}, ${item.dia})" style="background: #e8f5e9; border: none; color: #2e7d32; padding: 8px; border-radius: 5px; cursor: pointer;">
+                <button onclick="window.lancarModeloNoMes('${item.nome}', ${item.valor}, ${item.dia})" style="background: var(--background); border: none; color: var(--success); padding: 8px; border-radius: 5px; cursor: pointer;">
                     <i class="fa-solid fa-file-invoice-dollar"></i> Lançar
                 </button>
                 <button onclick="window.excluirModeloFixo('${docSnap.id}')" style="background:none; border:none; color: var(--danger); cursor:pointer;">
@@ -1749,7 +1929,7 @@ window.carregarServicos = async () => {
 
         const div = document.createElement('div');
         div.className = 'servico-item';
-        div.style = "display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid #eee;";
+        div.style = "background: var(--white); display:flex; justify-content:space-between; align-items:center; padding:10px; border:var(--border); border-radius: var(--radius); margin-bottom: 8px;";
         
         div.innerHTML = `
             <div onclick="window.prepararEdicaoServico('${d.id}')" style="cursor:pointer; flex-grow:1;">
@@ -1999,25 +2179,100 @@ window.prepararEdicaoModeloFixo = async (id) => {
 
 let instanciaEntradas = null;
 let instanciaSaidas = null;
+// Função Mestre para Renderizar qualquer gráfico de barras no sistema
 
+window.renderizarGraficoGestto = (canvasId, label, labelsX, valores, corBase, corBorda) => {
+    const ctx = document.getElementById(canvasId).getContext('2d');
+
+    const chartExistente = Chart.getChart(canvasId);
+    if (chartExistente) chartExistente.destroy();
+
+    // 1. CAPTURA DINÂMICA DAS VARIÁVEIS CSS
+    const estiloBody = getComputedStyle(document.body);
+    const corTexto = estiloBody.getPropertyValue('--text').trim() || '#1f2937';
+    // Criamos uma cor de grade que se adapta (clara no dark, escura no light)
+    const isDark = document.body.classList.contains('dark-theme');
+    const corGrade = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)';
+
+    return new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labelsX,
+            datasets: [{
+                label: label,
+                data: valores,
+                backgroundColor: corBase,
+                borderColor: corBorda,
+                borderWidth: 2,           
+                borderRadius: 6,
+                hoverBackgroundColor: corBorda
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: {
+                        color: corTexto, // Texto do eixo X dinâmico
+                        font: { family: "'Inter', sans-serif", size: 11, weight: '700' },
+                        padding: 10,
+                        maxRotation: 45, 
+                        minRotation: 0
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { 
+                        color: corGrade, // Linha horizontal dinâmica
+                        drawBorder: false
+                    },
+                    ticks: { 
+                        color: corTexto, // Valores do eixo Y dinâmicos
+                        font: { size: 10, weight: '600' },
+                        padding: 8
+                    }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: isDark ? '#334155' : '#1e293b',
+                    titleColor: '#fff',
+                    bodyColor: '#fff',
+                    cornerRadius: 8,
+                    displayColors: false,
+                    padding: 12
+                }
+            }
+        }
+    });
+};
 // GRÁFICOS DE BARRAS POR CATEGORIA
+
 window.atualizarGraficosBarras = async () => {
-    const mesAtual = document.getElementById("monthSelect").value;
+    const monthSelect = document.getElementById("monthSelect");
+    if (!monthSelect) return;
+    
+    const mesAtual = monthSelect.value;
     const user = auth.currentUser;
     if (!user) return;
 
     try {
-        const q = query(collection(db, "lancamentos"), where("userId", "==", user.uid), where("mes", "==", mesAtual));
+        const q = query(collection(db, "lancamentos"), 
+            where("userId", "==", user.uid), 
+            where("mes", "==", mesAtual)
+        );
         const snap = await getDocs(q);
 
-        // Objetos para agrupar por categoria
         let dadosEntradas = {};
         let dadosSaidas = {};
 
         snap.forEach(doc => {
             const item = doc.data();
             const valor = parseFloat(item.valor) || 0;
-            const cat = item.categoria || "Geral"; // Se não tiver categoria, agrupa no "Geral"
+            const cat = item.categoria || "Geral";
 
             if (item.tipo === "entrada") {
                 dadosEntradas[cat] = (dadosEntradas[cat] || 0) + valor;
@@ -2026,44 +2281,41 @@ window.atualizarGraficosBarras = async () => {
             }
         });
 
-        // --- GRÁFICO DE ENTRADAS ---
-        const ctxEntrada = document.getElementById('graficoEntradas').getContext('2d');
-        if (instanciaEntradas) instanciaEntradas.destroy();
-        instanciaEntradas = new Chart(ctxEntrada, {
-            type: 'bar',
-            data: {
-                labels: Object.keys(dadosEntradas), // As categorias aparecem aqui
-                datasets: [{
-                    label: 'Entradas por Categoria',
-                    data: Object.values(dadosEntradas),
-                    backgroundColor: '#22c55e',
-                    borderRadius: 8
-                }]
-            },
-            options: { responsive: true, plugins: { legend: { display: false } } }
-        });
+        // DEFINIÇÃO DE CORES (Ajustadas para contraste no Dark e Light)
+        const cores = {
+            entradaFundo: 'rgba(16, 185, 129, 0.2)', // Verde Suave (var --success)
+            entradaBorda: '#10B981',                 
+            saidaFundo: 'rgba(239, 68, 68, 0.2)',   // Vermelho Suave (var --danger)
+            saidaBorda: '#EF4444'
+        };
 
-        // --- GRÁFICO DE SAÍDAS ---
-        const ctxSaida = document.getElementById('graficoSaidas').getContext('2d');
-        if (instanciaSaidas) instanciaSaidas.destroy();
-        instanciaSaidas = new Chart(ctxSaida, {
-            type: 'bar',
-            data: {
-                labels: Object.keys(dadosSaidas), // As categorias aparecem aqui
-                datasets: [{
-                    label: 'Saídas por Categoria',
-                    data: Object.values(dadosSaidas),
-                    backgroundColor: '#ef4444',
-                    borderRadius: 8
-                }]
-            },
-            options: { responsive: true, plugins: { legend: { display: false } } }
-        });
+        // Renderiza ENTRADAS
+        window.renderizarGraficoGestto(
+            'graficoEntradas', 
+            'Entradas R$', 
+            Object.keys(dadosEntradas), 
+            Object.values(dadosEntradas), 
+            cores.entradaFundo,
+            cores.entradaBorda
+        );
+
+        // Renderiza SAÍDAS
+        window.renderizarGraficoGestto(
+            'graficoSaidas', 
+            'Saídas R$', 
+            Object.keys(dadosSaidas), 
+            Object.values(dadosSaidas), 
+            cores.saidaFundo,
+            cores.saidaBorda
+        );
 
     } catch (e) {
-        window.logErroTelegram("erro_grafico_categorias", e.message);
+        if(window.logErroTelegram) window.logErroTelegram("erro_grafico_categorias", e.message);
+        console.error("Erro ao carregar gráficos:", e);
     }
 };
+
+
 // ANÁLISE DE PADRÕES PARA SUGESTÃO DE CATEGORIAS
 window.analisarDescricoesParaCategorias = async () => {
     const user = auth.currentUser;
@@ -2342,13 +2594,13 @@ window.mostrarSobre = async () => {
         Swal.fire({
             title: 'Sobre o Gestto',
             html: `
-                <div style="text-align: left; font-family: 'Inter', sans-serif; color: #333;">
+                <div style="text-align: left; font-family: 'Inter', sans-serif; color: var(--background); background:var(--sucess)">
                     <p style="font-size: 14px; line-height: 1.5; margin-bottom: 15px;">
                         O <strong>Gestto</strong> é um ecossistema financeiro inteligente projetado para quem busca agilidade. 
                         Gerencie entradas, saídas e clientes em uma interface PWA de alta performance.
                     </p>
                     
-                    <div style="font-size: 12px; color: #666; margin-bottom: 8px; display: flex; justify-content: space-between;">
+                    <div style="font-size: 12px; color:; margin-bottom: 8px; display: flex; justify-content: space-between;">
                         <span><i class="fa-solid fa-code-branch"></i> Versão: ${versaoLocal}</span>
                         <span><i class="fa-solid fa-check-double"></i> Status: Online</span>
                     </div>
@@ -2364,7 +2616,7 @@ window.mostrarSobre = async () => {
                 </div>
             `,
             confirmButtonText: 'Fechar',
-            confirmButtonColor: '#20B2AA',
+            confirmButtonColor: 'var(--success)',
             width: '90%' // Ajuste para ocupar bem a tela do celular
         });
     } catch (e) {
@@ -2379,8 +2631,8 @@ window.limparMeusDadosAntigos = async () => {
         text: "Isso apagará TODOS os seus lançamentos. Os dados do testador beta não serão afetados.",
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
+        confirmButtonColor: 'var(--danger)',
+        cancelButtonColor: 'var(--success)',
         confirmButtonText: 'Sim, apagar tudo!',
         cancelButtonText: 'Cancelar'
     });

@@ -1,4 +1,4 @@
-const CACHE_NAME = '1.4.6'; // Incrementei a versão para forçar atualização
+const CACHE_NAME = '1.4.7'; // Incrementei a versão para forçar atualização
 const APP_PREFIX = '/Gestto-mobile';
 
 const assets = [
