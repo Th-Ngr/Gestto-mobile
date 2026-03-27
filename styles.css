@@ -806,7 +806,7 @@ body {
         box-shadow: 0 5px 20px rgba(0,0,0,0.2) !important;
     }
 /*Banner de novidades*/
-#txt-novidades-modal{
+.txt-novidades-modal{
   background: var(--background);
   color: var(--white);
   padding: 10px;
@@ -818,7 +818,7 @@ body {
   margin-bottom: 20px;
 }
 
-#modal-novidades{
+.modal-novidades{
   display: block;
   position: fixed;
   top: 50%;
