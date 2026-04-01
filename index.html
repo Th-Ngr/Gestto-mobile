@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gestto Mobile</title>
+    <link rel="icon" type="image/png" href="icons/icon-192">
 
   <!--links para fontes, ícones e estilos-->
 
@@ -18,16 +19,17 @@
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
   <!--Meta tags para PWA -->
-  <meta name="theme-color" content="#20B2AA">
+  <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
 
 </head>
 <body>
     <!--Modal de Novidades -->
-<div id="modal-novidades" style="display:none;">
+<div id="modal-novidades" style="display:none; position: fixed;top: 50%;left: 50%;transform: translate(-50%, -50%);width: 90%;max-width: 400px;background: Var(--background);color: var(--white);padding: 20px;border-radius: var(--radius);box-shadow: 0 10px 30px rgba(0,0,0,0.3);z-index: 10000;text-align: center;font-family: sans-serif;">
     <h3 style="color:var(--success); margin-top:0;">✅ Atualizado com Sucesso!</h3>
-    <p id="txt-versao-modal" style="font-weight:bold; margin-bottom:5px;"></p>
-    <div id="txt-novidades-modal" style="background:var(--white); padding:10px; border-radius:8px; font-size:14px; text-align:left; max-height:150px; overflow-y:auto; margin-bottom:20px;"></div>
+    <p id="txt-versao-modal" style="background: var(--background);color: var(--white);padding: 10px;border-radius:var(--radius);font-size: 14px;text-align: left;max-height: 150px;overflow-y: auto;margin-bottom: 20px;"></p>
+    <div id="txt-novidades-modal"></div>
     <button onclick="fecharModalNovidades()" style="background:var(--success); color:var(--white); border:none; padding:10px 30px; border-radius:20px; cursor:pointer; font-weight:bold; width:100%;">Entendido</button>
 </div>
     <!--Overlay para modais -->
@@ -82,16 +84,21 @@
     <!--Área Principal do App (Home e Perfil) -->
 <div id="app" style="display: none;">
     
-        <header class="header">
-<button id="btn-l" class="btn-principal" onclick="window.executarAcaoPrincipal()">
-    <i class="fa-solid fa-plus" id="icon-plus"></i>
-    <i class="fa-solid fa-sun" id="icon-tema" style="display: none;"></i>
-</button>
+    <header class="header">
+
+        <button id="btn-l" class="btn-principal" onclick="window.gerenciarAcaoBotao()">
+            <i id="icon-home" class="fa-solid fa-plus"></i>
+            <i id="icon-tema-sun" class="fa-solid fa-sun" style="display:none;"></i>
+            <i id="icon-tema-moon" class="fa-solid fa-moon" style="display:none;"></i>
+        </button>
+
     <h1 class="logo">Gestto</h1>
-    <button class="config-btn-round" id="btn-settings" onclick="window.abrirModalPerfil()">
-        <i class="fa-solid fa-gear"></i>
-    </button>
-          
+
+        <button id="btn-s" class="btn-sec" onclick="window.gerenciarAcaoSecundaria()">
+            <i id="icon-pendente" class="fa-solid fa-clock-rotate-left"></i>
+            <i id="icon-settings" class="fa-solid fa-gear" style="display:none;"></i>
+        </button>
+       
     <div class="saldo">
             <span class="saldo-label">Saldo Geral (Mês)</span>
             <h2 class="saldo-valor">R$ <span id="lucro">0,00</span></h2>
@@ -111,7 +118,7 @@
     </div>
         <section class="section">
             <div class="section-header" onclick="toggleSecao('entradaBody', this)">
-                <h3>Entradas (R$ <span id="totalEntrada">0,00</span>)</h3>
+                <h3>Entradas R$ <span id="totalEntrada">0,00</span></h3>
                 <span class="chevron"> <i class="fa-solid fa-chevron-down"></i> </span>
             </div>
             <div class="card-list" id="entradaBody"></div>
@@ -124,7 +131,7 @@
 
         <section class="section">
             <div class="section-header" onclick="toggleSecao('saidaBody', this)">
-                <h3>Saídas (R$ <span id="totalSaida">0,00</span>)</h3>
+                <h3>Saídas R$ <span id="totalSaida">0,00</span></h3>
                 <span class="chevron"> <i class="fa-solid fa-chevron-down"></i> </span>
             </div>
             <div class="card-list" id="saidaBody"></div>
@@ -167,35 +174,58 @@
     <nav class="bottom-nav">
         
         <button class="nav-item active" id="nav-home" onclick="navegar('home')">Home</button>
-        <button class="nav-item" id="btnConfiguracoes" onclick="navegar('perfil')">Perfil</button>
+        <button class="nav-item" id="nav-perfil" onclick="navegar('perfil')">Perfil</button>
     </nav>
 </div>
     <!--Modal de Edição Rápida -->
 <div id="editModal" class="modal-overlay" style="display:none;">
+    
     <div class="modal-content" style="background:var(--white); width:100%; max-width:400px; border-radius:15px; padding:20px;">
         <h3 style="margin-bottom:20px;">Editar Lançamento</h3>
-        <input type="hidden" id="editId">
-        <input type="text" id="editDescricao" placeholder="Descrição" >
-        <input type="number" id="editValor" placeholder="Valor" >
-        <input type="date" id="editData" placeholder="Data" >
         
-        <select id="editMes" >
+        <input type="hidden" id="editId">
+        <input type="hidden" id="inputEditStatus">
+        <input type="hidden" id="inputEditFormaPagamento">
+
+        <div class="form-group">
+            <input type="text" id="editDescricao" placeholder="Descrição">
+        </div>
+        
+        <div class="form-group">
+            <input type="number" id="editValor" placeholder="Valor">
+        </div>
+
+        <div class="tipo-selector" style="margin-bottom: 15px;">
+            <button type="button" id="btnEditPa" class="btn-tipo1" onclick="window.setStatusEdit('Pago')">Pago</button>
+            <button type="button" id="btnEditPe" class="btn-tipo1" onclick="window.setStatusEdit('Pendente')">Pendente</button>
+        </div>
+
+        <label id="labelPagamentoEdit" style="display: block; margin: 10px 0 8px; font-size: 14px; color: var(--text);">Forma de Pagamento</label>
+        <div id="containerPagamentoEdit" class="pagamento-container">
+            <button type="button" id="btnEditPgDinheiro" class="btn-pagamento" onclick="window.setPagamentoEdit('Dinheiro')"><i class="fa-solid fa-coins"></i> Dinheiro</button>
+            <button type="button" id="btnEditPgPix" class="btn-pagamento" onclick="window.setPagamentoEdit('Pix')"><i class="fa-brands fa-pix"></i> Pix</button>
+            <button type="button" id="btnEditPgDebito" class="btn-pagamento" onclick="window.setPagamentoEdit('Débito')"><i class="fa-solid fa-credit-card"></i> Débito</button>
+            <button type="button" id="btnEditPgCredito" class="btn-pagamento" onclick="window.setPagamentoEdit('Crédito')"><i class="fa-regular fa-credit-card"></i> Crédito</button>
+        </div> 
+
+        <div class="form-group" id="groupDataEdit" style="margin-top: 15px;">
+            <input type="date" id="editData" onchange="window.sincronizarMesPelaData(this.value, 'editMes')">
+            <label>Data</label>
+        </div>
+
+        <select id="editMes" class="hidden" style="margin-bottom: 20px;">
             <option value="Janeiro">Janeiro</option><option value="Fevereiro">Fevereiro</option><option value="Março">Março</option>
             <option value="Abril">Abril</option><option value="Maio">Maio</option><option value="Junho">Junho</option>
             <option value="Julho">Julho</option><option value="Agosto">Agosto</option><option value="Setembro">Setembro</option>
             <option value="Outubro">Outubro</option><option value="Novembro">Novembro</option><option value="Dezembro">Dezembro</option>
         </select>
-        
-        <select id="editStatus">
-            <option value="Pago">Pago</option>
-            <option value="Pendente">Pendente</option>
-        </select>
 
         <div style="display:flex; gap:10px;">
-            <button onclick="window.fecharModal()" style="flex:1; padding:12px; background:var(--danger); border:var(--border); color:var(--text); border-radius:var(--radius);">Cancelar</button>
-            <button onclick="window.salvarEdicao()" style="flex:1; padding:12px; background:var(--primary); color:var(--text); border:none; border-radius:var(--radius);">Salvar</button>
+            <button type="button" onclick="window.fecharModal()" style="flex:1; padding:12px; background:var(--danger); border:var(--border); color:var(--text); border-radius:var(--radius);">Cancelar</button>
+            <button type="button" onclick="window.salvarEdicao()" style="flex:1; padding:12px; background:var(--primary); color:var(--text); border:none; border-radius:var(--radius);">Salvar</button>
         </div>
     </div>
+</div>
 </div>
     <!--Banner de Instalação da PWA-->
 <div id="installBanner">
@@ -220,39 +250,64 @@
             <h3>Novo Lançamento</h3>
             <button class="close-btn" onclick="window.fecharModalNovo()">&times;</button>
         </div>
-            <div class="tipo-selector">
+        
+        <div class="tipo-selector">
             <button type="button" id="btnTipoE" class="btn-tipo active" onclick="window.setTipo('entrada')">Entrada</button>
             <button type="button" id="btnTipoS" class="btn-tipo" onclick="window.setTipo('saida')">Saída</button>
-            </div>
+        </div>
 
         <div style="background: var(--white); padding: 15px; border-radius: 12px; border: var(--border); margin-bottom: 15px; color:var(--text)">
             <div class="form-group" id="group-cliente">
-                <input type="text" id="cliente"style="color:var(--text)" required>
+                <input type="text" id="cliente" style="color:var(--text)" required>
                 <label>Cliente/Origem</label>
             </div>
 
             <div class="form-group">
-            <input type="text" id="descricao" list="listaSugestoesServicos" oninput="window.verificarSugestaoServico(this.value)" style="color:var(--text)"required>
-            <label>Descrição</label>
-                </div>
+                <input type="text" id="descricao" list="listaSugestoesServicos" oninput="window.verificarSugestaoServico(this.value)" style="color:var(--text)" required>
+                <label>Descrição</label>
+            </div>
 
             <datalist id="listaSugestoesServicos"></datalist>
-            <div class="form-group"><input type="number" id="valor" style="color:var(--text)"required><label>Valor</label></div>
-            <div class="form-group"><input type="date" id="data" style="color:var(--text)" required><label>Data</label></div>
-        
-            <div class="fixa-row">
+            
+            <div class="form-group">
+                <input type="number" id="valor" style="color:var(--text)" required>
+                <label>Valor</label>
+            </div>
+
+        <div id="divpago" class="tipo-selector">
+            <button type="button" id="btnTipoPa" class="btn-tipo1 active" onclick="window.setStatus('Pago')">Pago</button>
+            <button type="button" id="btnTipoPe" class="btn-tipo1" onclick="window.setStatus('Pendente')">Pendente</button>
+        </div>
+
+        <input type="hidden" id="status" value="">
+
+        <label id="labelPagamentoNovo" style="display: block; margin: 10px 0 8px; font-size: 14px; color: var(--text);">Forma de Pagamento</label>
+        <div id="pagamentoContainerNovo" class="pagamento-container">
+            <button type="button" id="btnPgDinheiro" class="btn-pagamento" onclick="window.setPagamento('Dinheiro')"><i class="fa-solid fa-coins"></i> Dinheiro</button>
+            <button type="button" id="btnPgPix" class="btn-pagamento" onclick="window.setPagamento('Pix')"><i class="fa-brands fa-pix"></i> Pix</button>
+            <button type="button" id="btnPgDebito" class="btn-pagamento" onclick="window.setPagamento('Débito')"><i class="fa-solid fa-credit-card"></i> Débito</button>
+            <button type="button" id="btnPgCredito" class="btn-pagamento" onclick="window.setPagamento('Crédito')"><i class="fa-regular fa-credit-card"></i> Crédito</button>
+        </div>
+
+        <input type="hidden" id="formaPagamento" value="">
+
+        <div class="form-group hidden" id="groupDataNovo">
+            <input type="date" id="data" onchange="window.sincronizarMesPelaData(this.value, 'monthSelect')" style="color:var(--text)">
+            <label>Data prevista de pagamento</label>
+        </div>
+
+            <div  type="hidden" class="fixa-row">
                 <input type="checkbox" id="isFixa">
                 <label for="isFixa">Lançamento Fixo Mensal?</label>
             </div>
+            
             <input type="hidden" id="tipo" value="entrada">
             <button class="primary-btn" onclick="window.addLancamento()">Confirmar</button>
         </div>
-        
-        
     </div>
 </div>
     <!--Modal de Gerenciamento de Gastos Fixos e Serviços -->
-    <div id="modalGerenciadorFixos" class="modal-overlay" style="display:none; z-index: 1001;">
+<div id="modalGerenciadorFixos" class="modal-overlay" style="display:none; z-index: 1001;">
     <div class="modal-content" style="max-height: 90vh; overflow-y: auto;">
         <div class="modal-header">
             <h3>Modelos de Fixos</h3>
@@ -271,9 +326,9 @@
         <div id="listaModelosSalvos">
             </div>
     </div>
-    </div>
+</div>
     <!--Modal de Gerenciamento de Serviços/Produtos -->
-    <div id="modalGerenciadorServicos" class="modal-overlay" style="display:none; z-index: 1002;">
+<div id="modalGerenciadorServicos" class="modal-overlay" style="display:none; z-index: 1002;">
     <div class="modal-content">
         <div class="modal-header">
             <h3>Cadastro de Serviços</h3>
@@ -286,7 +341,7 @@
         </form>
         <div id="listaServicosSalvos"></div>
     </div>
-    </div>
+</div>
 
 <!--Drawer de Configurações Rápidas -->
 <div id="drawerPerfil" class="drawer">
@@ -369,7 +424,7 @@
         <div id="listaPendenciasContainer">
             </div>
         
-        <button onclick="document.getElementById('modalPendencias').style.display='none'" style="width:100%; margin-top:20px; padding:10px; border-radius:8px; border:none; background:var(--background); color:var(--text);">Fechar</button>
+        <button onclick="document.getElementById('modalPendencias').style.display='none'" style="width:100%; margin-top:20px; padding:10px; border-radius:8px; border:none; background:var(--success); color:var(--white);">Fechar</button>
     </div>
 </div>
 

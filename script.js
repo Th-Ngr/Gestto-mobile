@@ -28,8 +28,10 @@ import {
     setDoc, 
     getDoc, 
     updateDoc, 
-    onSnapshot 
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    onSnapshot,
+    orderBy,
+} 
+from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         // Configuração do Firebase //
 const firebaseConfig = {
@@ -407,10 +409,11 @@ window.logErroTelegram = async (local, erro) => {
         console.error("Erro ao enviar notificação para o Telegram:", e); 
     }
 };
-// --- CONTROLE DO APP & AUTH ---
+
+// --- BLOCO DE AUTENTICAÇÃO COMPLETO ---
 onAuthStateChanged(auth, async (user) => { 
     if (user) { 
-        // --- FILTRO DE SEGURANÇA COMERCIAL ---
+        // 1. FILTRO DE SEGURANÇA COMERCIAL (E-mail verificado)
         if (!user.emailVerified) {
             document.getElementById("auth").style.display = "flex"; 
             document.getElementById("app").style.display = "none";
@@ -429,30 +432,48 @@ onAuthStateChanged(auth, async (user) => {
                     await sendEmailVerification(user);
                     Swal.fire('Enviado!', 'Confira seu e-mail novamente.', 'success');
                 }
-                //await auth.signOut();//
             });
-            return; // INTERROMPE aqui, não carrega os dados abaixo
-        }//
-        // -------------------------------------
+            return; // Interrompe aqui se não estiver verificado
+        }
 
+        // 2. CONFIGURAÇÃO DE INTERFACE (Usuário Logado e Verificado)
         document.getElementById("auth").style.display = "none"; 
         document.getElementById("app").style.display = "block"; 
         
+        // Inicializa as configurações de meses
         configurarMeses(); 
         
-        await window.carregarModelosFixos();
-        await window.gerarProjecaoMesAtual(); 
-        await carregarLancamentos(); 
+        // 3. CARREGAMENTO DE DADOS (Sequencial com tratamento de erros)
+        try {
+            const uid = user.uid; // Define o UID aqui para uso imediato
 
-        const jaAvisouNestaSessao = sessionStorage.getItem('avisoFinanceiroExibido');
-        if (!jaAvisouNestaSessao) {
-            await window.notificarStatusFinanceiro(); 
-            sessionStorage.setItem('avisoFinanceiroExibido', 'true'); // Corrigi a chave para bater com o get
+            // Carrega modelos e projeções
+            await window.carregarModelosFixos();
+            await window.gerarProjecaoMesAtual(); 
+            
+            // Chama a função de lançamentos (que agora usará o orderBy)
+            await carregarLancamentos(); 
+
+            // Alerta financeiro da sessão
+            const jaAvisouNestaSessao = sessionStorage.getItem('avisoFinanceiroExibido');
+            if (!jaAvisouNestaSessao) {
+                await window.notificarStatusFinanceiro(); 
+                sessionStorage.setItem('avisoFinanceiroExibido', 'true');
+            }
+
+            // Carrega as Regras de Categorias para o Usuário
+            const qRegras = query(collection(db, "regras_categorias"), where("uid", "==", uid));
+            const snapRegras = await getDocs(qRegras);
+            window.regrasCategorias = snapRegras.docs.map(d => d.data());
+
+        } catch (e) {
+            console.error("Erro no fluxo de inicialização dos dados:", e);
         }
 
-        // Configuração do Input Inteligente
+        // 4. CONFIGURAÇÃO DO INPUT INTELIGENTE (Descrição)
         const inputDesc = document.getElementById("descricao");
         if (inputDesc) {
+            // Remove listeners antigos para não duplicar no Samsung A15
             inputDesc.replaceWith(inputDesc.cloneNode(true)); 
             const novoInputDesc = document.getElementById("descricao");
             
@@ -469,23 +490,17 @@ onAuthStateChanged(auth, async (user) => {
             });
         }
 
+        // 5. CONFIGURAÇÃO DO TOAST (Avisos flutuantes)
         window.Toast = Swal.mixin({
             toast: true,
             position: 'top-end',
             showConfirmButton: false,
             timer: 3000,
-            timerProgressBar: true,
+            timerProgressBar: false,
         });
 
-        try {
-            const qRegras = query(collection(db, "regras_categorias"), where("uid", "==", user.uid));
-            const snapRegras = await getDocs(qRegras);
-            regrasCategorias = snapRegras.docs.map(d => d.data());
-        } catch (e) {
-            console.error("Erro ao carregar regras:", e);
-        }
-
     } else { 
+        // LÓGICA DE LOGOUT
         document.getElementById("auth").style.display = "flex"; 
         document.getElementById("app").style.display = "none"; 
         sessionStorage.removeItem('avisoFinanceiroExibido');
@@ -629,7 +644,7 @@ window.gerenciarAcaoBotao = () => {
         window.alternarTemaGestto();
     } else {
         // Se estiver normal (Home), abre seu formulário/modal
-        if (window.abrirModalLancamento) window.abrirModalLancamento();
+        if (window.abrirModalLancamento) window.abrirModalNovo();
     }
 };
 
@@ -659,46 +674,109 @@ window.alternarTemaGestto = () => {
 };
 
 window.navegar = (pagina) => {
-    // 1. Controle de Telas
+
+    // Controla as classes ativas na Navbar
+    document.getElementById("nav-home")?.classList.toggle("active", pagina === 'home');
+    document.getElementById("nav-perfil")?.classList.toggle("active", pagina === 'perfil');
+
+    // 1. Troca de Telas
     document.getElementById("tela-lancamentos").style.display = pagina === 'home' ? 'block' : 'none';
     document.getElementById("perfilSection").style.display = pagina === 'perfil' ? 'block' : 'none';
-    
-    // 2. Controle da Navbar
-    document.getElementById("nav-home").classList.toggle("active", pagina === 'home');
-    document.getElementById("btnConfiguracoes").classList.toggle("active", pagina === 'perfil');
 
-    const btnL = document.getElementById("btn-l");
-    const iconPlus = document.getElementById("icon-plus"); 
-    const iconTema = document.getElementById("icon-tema"); 
-    const engrenagem = document.getElementById("btn-settings");
+    // 2. Captura de Elementos
+    
+    const btnL = document.getElementById('btn-l');
+    const btnS = document.getElementById('btn-s');
+    const iPen = document.getElementById('icon-pendente');
+    const iSet = document.getElementById('icon-settings');
+    const iHome = document.getElementById('icon-home');
+    const iSun = document.getElementById('icon-tema-sun');
+    const iMoon = document.getElementById('icon-tema-moon');
 
     if (pagina === 'perfil') {
-        // --- ESTADO PERFIL ---
-        if (btnL) {
-            btnL.classList.add("btn-principal-perfil"); // Gira o botão
-            if(iconPlus) iconPlus.style.display = "none";
-            if(iconTema) {
-                iconTema.style.display = "block";
-                // Ajusta o ícone inicial do tema ao entrar no perfil
-                const isDark = document.body.classList.contains('dark-theme');
-                iconTema.className = isDark ? "fa-solid fa-moon" : "fa-solid fa-sun";
-            }
-        }
+        // --- METAMORFOSE PARA PERFIL ---
         
-        if (engrenagem) {
-            engrenagem.style.display = "flex";
-            engrenagem.classList.add("animacao-redemoinho");
-        }
-        window.carregarDadosPerfil();
+        // Botão L: Vira Alternador de Tema
+        btnL.classList.add('btn-principal-perfil');
+        iHome.style.display = 'none';
+        window.atualizarIconeTemaNoBotao();
+    }
+    if (pagina === 'perfil') {
+        const estavaEscondido = window.getComputedStyle(btnS).display === 'none';
+        btnS.style.display = 'flex';
+        btnS.classList.remove('animacao-sumir'); // Cancela saída se estiver voltando rápido
 
-    } else {
-        // --- ESTADO HOME ---
-        if (btnL) {
-            btnL.classList.remove("btn-principal-perfil"); // Desgira o botão
-            if(iconPlus) iconPlus.style.display = "block";
-            if(iconTema) iconTema.style.display = "none";
+        if (estavaEscondido) {
+            btnS.classList.add('btn-principal-perfil');
+        } else {
+            btnS.classList.add('btn-principal-perfil');
         }
-        if (engrenagem) engrenagem.style.display = "none";
+
+        if(iPen) iPen.style.display = 'none';
+        if(iSet) iSet.style.display = 'block';
+        window.carregarDadosPerfil();
+    } 
+    else {
+        // --- VOLTANDO PARA HOME ---
+        btnL.classList.remove('btn-principal-perfil');
+        document.getElementById('icon-home').style.display = 'block';
+        ['icon-tema-sun', 'icon-tema-moon'].forEach(id => {
+            const el = document.getElementById(id);
+            if(el) el.style.display = 'none';
+        });
+
+        // Lógica Inteligente de Saída
+        const temPendencia = (window.totalPendenteGlobal > 0);
+
+        if (!temPendencia) {
+            // Se NÃO tem dívida: Roda e Sumir
+            btnS.classList.remove('btn-principal-perfil', 'animacao-surgir');
+            btnS.classList.add('animacao-sumir');
+            
+            
+        } else {
+            // Se TEM dívida: Apenas vira de volta para Alerta
+            btnS.classList.remove('btn-principal-perfil', 'animacao-surgir', 'animacao-sumir');
+            if(iSet) iSet.style.display = 'none';
+            if(iPen) iPen.style.display = 'block';
+            btnS.style.display = 'flex'; 
+        }
+    }
+};
+
+
+
+
+// 3. FUNÇÕES DE CLIQUE DINÂMICAS
+window.gerenciarAcaoBotao = () => {
+    const btn = document.getElementById('btn-l');
+    // Se estiver girado (estado perfil), alterna tema. Se não, abre modal.
+    if (btn.classList.contains('btn-principal-perfil')) {
+        window.alternarTemaGestto();
+    } else {
+        window.abrirModalNovo();
+    }
+};
+
+window.gerenciarAcaoSecundaria = () => {
+    const btn = document.getElementById('btn-s');
+    // Se estiver girado (estado perfil), abre gaveta de config. Se não, abre pendências.
+    if (btn.classList.contains('btn-principal-perfil')) {
+        window.abrirModalPerfil();
+    } else {
+        window.abrirModalGestaoPendencias();
+    }
+};
+
+// Auxiliar para sincronizar o ícone de tema
+window.atualizarIconeTemaNoBotao = () => {
+    const iSun = document.getElementById('icon-tema-sun');
+    const iMoon = document.getElementById('icon-tema-moon');
+    const isDark = document.body.classList.contains('dark-theme');
+
+    if (iSun && iMoon) {
+        iSun.style.display = isDark ? 'none' : 'block';
+        iMoon.style.display = isDark ? 'block' : 'none';
     }
 };
 
@@ -727,38 +805,83 @@ window.executarAcaoPrincipal = () => {
 };
 // --- MODAL DE NOVO LANÇAMENTO (POP-UP) ---
 window.abrirModalNovo = () => {
+    window.limparCamposModal();
+    window.setStatus('Pago');
     document.getElementById("modalNovo").style.display = "flex";
     window.setTipo('entrada');
     document.getElementById("data").value = new Date().toISOString().split('T')[0];
+    setTimeout(() => document.getElementById("cliente").focus(), 100);
     
 };
 window.fecharModalNovo = () => {
     document.getElementById("modalNovo").style.display = "none";
+    document.getElementById("formaPagamento").value = "";
+    document.querySelectorAll('.btn-pagamento').forEach(btn => btn.classList.remove('active'));
     window.limparCamposModal();
 };
 // --- CRUD LANÇAMENTOS ---
 window.carregarLancamentos = async () => {
     const user = auth.currentUser;
 
+    // Se o usuário não estiver logado, tentamos novamente
     if (!user) {
         console.warn("Usuário não detectado, tentando novamente em 1s...");
         setTimeout(window.carregarLancamentos, 1000);
         return;
     }
+
+    // Pega o UID diretamente do objeto user que acabamos de validar
+    const uid = user.uid; 
+
+    let pE = 0; 
+    let pS = 0;
+    let tE = 0;
+    let tS = 0;
+
     try {
-        const user = auth.currentUser;
-    if (!user) return;
-        const mes = document.getElementById("monthSelect").value;
-        const q = query(collection(db, "lancamentos"), where("userId", "==", user.uid), where("mes", "==", mes));
+        // CORREÇÃO: Pegar o mês do seletor principal da tela (monthSelectMain)
+        const mesSelecionado = document.getElementById("monthSelectMain")?.value || 
+                               document.getElementById("monthSelect")?.value;
+
+        // A consulta (Query) com orderBy e UID corrigidos
+        const q = query(
+            collection(db, "lancamentos"),
+            where("userId", "==", uid),
+            where("mes", "==", mesSelecionado),
+            orderBy("data", "desc") 
+        );
+
         const snap = await getDocs(q);
-        const eBody = document.getElementById("entradaBody"), sBody = document.getElementById("saidaBody"); 
-        eBody.innerHTML = ""; sBody.innerHTML = "";
-        let tE = 0, tS = 0;
+        
+        const eBody = document.getElementById("entradaBody");
+        const sBody = document.getElementById("saidaBody"); 
+        
+        if (eBody) eBody.innerHTML = ""; 
+        if (sBody) sBody.innerHTML = "";
         
         snap.forEach(d => {
             const item = d.data();
             const v = parseFloat(item.valor) || 0;
-            const card = `<div class="transaction-card">
+            const status = item.status; // Seu sistema usa "Pago" ou "Pendente"
+
+            // 1. Lógica de Soma Segregada (Sensível ao "P" maiúsculo)
+            if (item.tipo === "entrada") {
+                if (status === "Recebido" || status === "Pago") {
+                    tE += v; 
+                } else {
+                    pE += v; 
+                }
+            } else {
+                if (status === "Pago" || status === "Recebido") {
+                    tS += v; 
+                } else {
+                    pS += v; 
+                }
+            }
+
+            // 2. Montagem do Card
+            const card = `
+            <div class="transaction-card">
                 <div class="icon ${item.tipo === "entrada" ? "income" : "expense"}">${item.tipo === "entrada" ? "↑" : "↓"}</div>
                 <div class="info" onclick="window.prepararEdicao('${d.id}')">
                     <span class="title">${item.descricao}</span>
@@ -766,21 +889,65 @@ window.carregarLancamentos = async () => {
                 </div>
                 <div class="right">
                     <span class="amount">R$ ${v.toFixed(2)}</span>
-                    <span class="badge ${item.status === "Pago" ? "paid" : "pending"}">${item.status}</span>
+                    <span class="badge ${status === "Pago" || status === "Recebido" ? "paid" : "pending"}">${status}</span>
                 </div>
                 <button onclick="window.deletar('${d.id}')" style="margin-left:10px; border:none; background:none; color:var(--danger); "><i class="fa-solid fa-trash"></i></button>
             </div>`;
-            if (item.tipo === "entrada") { tE += v; eBody.innerHTML += card; } else { tS += v; sBody.innerHTML += card; }
+
+            if (item.tipo === "entrada" && eBody) eBody.innerHTML += card; 
+            else if (sBody) sBody.innerHTML += card;
         });
-        document.getElementById("totalEntrada").innerText = tE.toFixed(2);
-        document.getElementById("totalSaida").innerText = tS.toFixed(2);
-        document.getElementById("lucro").innerText = (tE - tS).toFixed(2);
-    } catch (e) { window.logErroTelegram("carregarLancamentos", e.message); }
 
-    window.atualizarGraficosBarras();
+        // 3. Atualização da UI
+        if (document.getElementById("totalEntrada")) {
+            document.getElementById("totalEntrada").innerHTML = `
+                ${tE.toFixed(2)}
+                <br><span style="font-size: 0.7em; opacity: 0.6; font-weight: normal;">+ R$ ${pE.toFixed(2)} pendente</span>
+            `;
+        }
 
+        if (document.getElementById("totalSaida")) {
+            document.getElementById("totalSaida").innerHTML = `
+                ${tS.toFixed(2)}
+                <br><span style="font-size: 0.7em; opacity: 0.6; font-weight: normal;">+ R$ ${pS.toFixed(2)} pendente</span>
+            `;
+        }
+
+        const lucroReal = tE - tS;
+        if (document.getElementById("lucro")) {
+            document.getElementById("lucro").innerHTML = `
+                ${lucroReal.toFixed(2)}
+                <br><span style="font-size: 0.7em; opacity: 0.6; font-weight: normal;">Previsto: R$ ${(lucroReal + (pE - pS)).toFixed(2)}</span>
+            `;
+        }
+
+    } catch (e) { 
+        console.error("Erro ao carregar lançamentos:", e);
+        if (typeof window.logErroTelegram === "function") window.logErroTelegram("carregarLancamentos", e.message); 
+    }
+
+    if (typeof window.atualizarGraficosBarras === "function") window.atualizarGraficosBarras();
+    window.totalPendenteGlobal = pE + pS;
+    if (typeof window.verificarPendenciasVisiveis === "function") window.verificarPendenciasVisiveis();
 };
 
+window.verificarPendenciasVisiveis = () => {
+    const btnS = document.getElementById("btn-s");
+    const telaHome = document.getElementById("tela-lancamentos");
+
+    if (!btnS || !telaHome) return;
+
+    // Se não estiver na Home, não mexemos aqui (quem manda é a função navegar)
+    if (telaHome.style.display === 'none') return;
+
+    // Se o valor global for maior que 0, mostra. Caso contrário, garante que suma.
+    if (window.totalPendenteGlobal > 0) {
+        btnS.style.display = "flex";
+        btnS.classList.add('btn-sec');
+    } else {
+        btnS.style.display = "none";
+    }
+};
 // sistema de notificação//
 window.gerarProjecaoMesAtual = async () => {
     const hoje = new Date();
@@ -866,7 +1033,7 @@ window.exibirAlertasPendencias = async () => {
             cancelButtonText: 'Depois'
         }).then((result) => {
             if (result.isConfirmed) {
-                window.abrirModalGestaoPendencias(); // Vamos criar este modal agora
+                window.abrirModalGestaoPendencias();
             }
         });
     }
@@ -913,7 +1080,7 @@ window.notificarStatusFinanceiro = async () => {
                             <h4 style="margin: 0 0 5px 0; color: var(--danger);">
                                 <i class="fa-solid fa-circle-xmark"></i> Atrasadas (${atrasados.length})
                             </h4>
-                            <small>${atrasados.length > 0 ? atrasados.slice(0, 3).join(", ") : "Nenhuma conta vencida"}</small>
+                            <small>${atrasados.length > 0 ? atrasados.slice(0, 3).join(", ") : "Nenhuma pendência vencida"}</small>
                         </div>
 
                         <div style="padding: 10px; border-radius: 8px; background: var(--background); border-left: 5px solid var(--warning);">
@@ -926,8 +1093,8 @@ window.notificarStatusFinanceiro = async () => {
                 `,
                 icon: atrasados.length > 0 ? 'error' : 'info', // Ícone de erro se houver atrasos, senão info
                 showCancelButton: true,
-                confirmButtonColor: '#28a745',
-                cancelButtonColor: '#6c757d',
+                confirmButtonColor: 'var(--success)',
+                cancelButtonColor: 'var(--danger)',
                 confirmButtonText: 'Ver Detalhes',
                 cancelButtonText: 'Fechar',
             }).then((result) => {
@@ -946,6 +1113,7 @@ window.abrirModalGestaoPendencias = async () => {
     const mesAtual = document.getElementById("monthSelect").value;
     const container = document.getElementById("listaPendenciasContainer");
     
+
     // Mostra o modal
     document.getElementById('modalPendencias').style.display = 'block';
     container.innerHTML = "<p style='text-align:center;'>Carregando pendências...</p>";
@@ -956,14 +1124,14 @@ window.abrirModalGestaoPendencias = async () => {
             where("userId", "==", uid),
             where("mes", "==", mesAtual),
             where("status", "in", ["Atrasado", "Pendente"]),
-            where("tipo", "==", "saida")
+            where("tipo", "in", ["saida","entrada"]),
         );
 
         const snap = await getDocs(q);
         container.innerHTML = "";
 
         if (snap.empty) {
-            container.innerHTML = "<div style='text-align:center; padding:20px;'>🎉 Tudo pago por aqui!</div>";
+            container.innerHTML = "<div style='text-align:center; padding:20px; color:var(--Text);'>🎉 Tudo certo por aqui!🎉</div>";
             return;
         }
 
@@ -971,17 +1139,18 @@ window.abrirModalGestaoPendencias = async () => {
             const item = docSnap.data();
             const idDoc = docSnap.id;
             const corStatus = item.status === 'Atrasado' ? 'var(--danger)' : 'var(--warning)';
+            const nomeExibicao = item.cliente ? `${item.descricao} - <strong>${item.cliente}</strong>` : item.descricao;
 
             container.innerHTML += `
-                <div class="transaction-card" style="border-left: 5px solid ${corStatus}; margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center; padding:10px; background:var(--background); border-radius:8px;">
+                <div class="transaction-card" style="border-left: 5px solid ${corStatus}; margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center; padding:12px; background:var(--background); border-radius:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
                     <div class="info">
-                        <span class="title" style="display:block; font-weight:bold;">${item.descricao}</span>
-                        <span class="category" style="font-size:12px; color:var(--text);">Vence dia: ${item.data.split('-')[2] || '--'}</span>
+                        <span class="title" style="display:block; font-size:14px; color:var(--text);">${nomeExibicao}</span>
+                        <span class="category" style="font-size:12px; color:#64748b;">Vence dia: ${item.data ? item.data.split('-')[2] : '--'}</span>
                     </div>
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <span class="amount" style="font-weight:bold;">R$ ${parseFloat(item.valor).toFixed(2)}</span>
+                        <span class="amount" style="font-weight:bold; color:var(--text);">R$ ${parseFloat(item.valor).toFixed(2)}</span>
                         <button onclick="window.confirmarPagamentoRapido('${idDoc}', '${item.descricao}')" 
-                                style="background:var(--success); color:var(--text); border:none; padding:8px 12px; border-radius:5px; cursor:pointer;">
+                                style="background:var(--success); color:white; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:12px;">
                             <i class="fa-solid fa-check"></i> Pago
                         </button>
                     </div>
@@ -1005,7 +1174,9 @@ window.confirmarPagamentoRapido = async (idDoc, nome) => {
         if (window.Toast) {
             window.Toast.fire({
                 icon: 'success',
-                title: `${nome} marcado como pago!`
+                title: `${nome} marcado como pago!`,
+                backdrop:false,
+                timer: 1000,
             });
         }
 
@@ -1047,80 +1218,104 @@ window.setTipo = (t) => {
 };
 // --- FUNÇÕES DE LANÇAMENTOS E LIMPEZA---
 window.addLancamento = async () => {
-    const descricao = document.getElementById("descricao").value;
-    const valorInput = document.getElementById("valor").value;
-    const valor = parseFloat(valorInput) || 0;
-    const dataBase = document.getElementById("data").value;
-    const cliente = document.getElementById("cliente").value;
-    const tipo = document.getElementById("tipo").value; // Agora pegará o valor correto
-    const mesSelecionado = document.getElementById("monthSelect").value;
-    const isFixa = document.getElementById("isFixa").checked;
-
-    if (!descricao || !valor || !dataBase) {
-        return Swal.fire('Atenção', 'Preencha Descrição, Valor e Data.', 'warning');
-    }
-
     try {
+        // 1. Captura e BLINDAGEM de strings
+        const statusElement = document.getElementById('status');
+        // Forçamos a captura limpa: se não houver nada, assume "Pendente"
+        const statusBruto = statusElement ? statusElement.value : "Pendente";
+        const statusParaComparar = statusBruto.toLowerCase().trim(); 
+
+        const descricao = document.getElementById("descricao").value.trim();
+        const valorInput = document.getElementById("valor").value;
+        const valor = parseFloat(valorInput) || 0;
+        let dataBase = document.getElementById("data").value;
+        const cliente = document.getElementById("cliente").value;
+        const tipo = document.getElementById("tipo").value; 
+        const mesSelecionado = document.getElementById("monthSelect").value;
+        const isFixa = document.getElementById("isFixa").checked;
+        
+        // Captura a forma de pagamento
+        const formaPagamento = document.getElementById("formaPagamento").value.trim();
+
+        // 2. Validações de Segurança
+        if (!descricao || valor <= 0) {
+            return Swal.fire('Atenção', 'Preencha a descrição e um valor válido.', 'warning');
+        }
+
+        // BLOQUEIO: Se for Pago, OBRIGA a seleção da forma de pagamento
+        if (statusParaComparar === 'pago') {
+            if (!formaPagamento || formaPagamento === "" || formaPagamento.toLowerCase() === "pendente") {
+                return Swal.fire({
+                    icon: 'warning',
+                    title: 'Forma de Pagamento',
+                    text: 'Para lançamentos pagos, selecione como você recebeu/pagou (Pix, Dinheiro, etc).',
+                    confirmButtonColor: 'var(--primary)' 
+                });
+            }
+        }
+
+        if (!dataBase) {
+            dataBase = new Date().toISOString().split('T')[0];
+        }
+
+        // 3. Preparação dos Dados - AQUI MORRE O ERRO DO MINÚSCULO
         const uid = auth.currentUser.uid;
-        const categoriaIdentificada = window.identificarCategoriaPelaDescricao(descricao);
+        
+        // Criamos as variáveis finais já formatadas
+        const statusFinalParaSalvar = (statusParaComparar === 'pago') ? "Pago" : "Pendente";
+        
+        // Se for Pago, usa a formaPagamento. Se for Pendente, grava "Pendente" (com P maiúsculo)
+        const pagamentoFinalParaSalvar = (statusFinalParaSalvar === "Pago") ? formaPagamento : "Pendente";
+
+        const categoriaIdentificada = typeof window.identificarCategoriaPelaDescricao === "function" 
+            ? window.identificarCategoriaPelaDescricao(descricao) 
+            : "Geral";
 
         const novo = { 
             userId: uid, 
             descricao, 
             valor, 
             data: dataBase, 
-            cliente: tipo === 'entrada' ? cliente : "", // Limpa cliente se for saída
+            cliente: tipo === 'entrada' ? cliente : "", 
             tipo, 
             isFixa, 
             mes: mesSelecionado, 
-            status: "Pago",
-            categoria: categoriaIdentificada 
+            status: statusFinalParaSalvar, // "Pago" ou "Pendente"
+            Pagamento: pagamentoFinalParaSalvar, // AQUI: agora grava "Pendente" com P maiúsculo
+            categoria: categoriaIdentificada,
+            createdAt: new Date()
         };
-        
+
+        // 4. Salva no Firebase
         await addDoc(collection(db, "lancamentos"), novo);
 
-        if (isFixa) {
-            await addDoc(collection(db, "modelos_fixos"), {
-                uid: uid,
-                nome: descricao,
-                valor: valor,
-                dia: parseInt(dataBase.split('-')[2]),
-                categoria: categoriaIdentificada,
-                dataCriacao: new Date()
-            });
-
-            let indice = months.indexOf(mesSelecionado);
-            for (let i = indice + 1; i < months.length; i++) {
-                await addDoc(collection(db, "lancamentos"), { ...novo, mes: months[i] });
-            }
-        }
-        
-        // Dispara a verificação inteligente de alteração de preço
-        window.verificarAtualizacaoModelo(descricao, valor);
-
+        // 5. Interface
         window.fecharModalNovo();
-        window.limparCamposModal();
-        window.carregarLancamentos();
+        if (typeof window.limparCamposModal === "function") window.limparCamposModal();
         
-        Toast.fire({
-            icon: 'success',
-            title: isFixa ? 'Lançamento Fixo Replicado!' : 'Salvo com sucesso!'
-        });
+        // Pequeno delay para garantir que o Firebase indexou o novo documento
+        setTimeout(() => {
+            window.carregarLancamentos();
+        }, 500);
+        
+        Toast.fire({ icon: 'success', title: 'Salvo com sucesso!' });
 
     } catch (e) { 
-        window.logErroTelegram("addLancamento", e.message); 
-        Swal.fire('Erro', 'Falha ao guardar registro.', 'error');
+        console.error("Erro no addLancamento:", e);
+        if (typeof window.logErroTelegram === "function") window.logErroTelegram("addLancamento", e.message);
+        Swal.fire('Erro', 'Falha ao salvar o registro.', 'error');
     }
 };
 
 window.limparCamposModal = () => {
     document.getElementById("descricao").value = "";
     document.getElementById("valor").value = "";
-    document.getElementById("data").value = "";
+    
     document.getElementById("cliente").value = "";
     document.getElementById("tipo").value = "saida"; // ou o seu valor padrão
     document.getElementById("isFixa").checked = false;
     
+    document.querySelectorAll('.pagamento-selector .btn-tipo').forEach(btn => btn.classList.remove('active'));
     // Se o seu modal usa o select de meses, talvez queira resetar para o atual
     // document.getElementById("monthSelect").value = mesAtual;
 };
@@ -1221,33 +1416,96 @@ window.mostrarTutorialAjuste = () => {
 
 // --- EDIÇÃO DE LANÇAMENTOS ---
 window.prepararEdicao = async (id) => {
-    const docSnap = await getDoc(doc(db, "lancamentos", id));
-    if (docSnap.exists()) {
-        const d = docSnap.data();
-        document.getElementById("editId").value = id;
-        document.getElementById("editDescricao").value = d.descricao;
-        document.getElementById("editValor").value = d.valor;
-        document.getElementById("editData").value = d.data;
-        document.getElementById("editMes").value = d.mes;
-        document.getElementById("editStatus").value = d.status || "Pago";
-        document.getElementById("editModal").style.display = "flex";
+    try {
+        const docSnap = await getDoc(doc(db, "lancamentos", id));
+        
+        if (docSnap.exists()) {
+            const d = docSnap.data();
+            
+            // 1. Preenchimento de campos básicos
+            document.getElementById("editId").value = id;
+            document.getElementById("editDescricao").value = d.descricao || "";
+            document.getElementById("editValor").value = d.valor || 0;
+            document.getElementById("editData").value = d.data || "";
+            
+
+            // 2. Lógica do Status (Botões)
+            const statusSalvo = d.status || "Pago";
+            
+            // ATENÇÃO: Verifique se no seu HTML o input hidden tem esse ID exato
+            const inputStatus = document.getElementById("inputEditStatus");
+            if (inputStatus) {
+                inputStatus.value = statusSalvo;
+            }
+
+            // Dispara a animação e as cores dos botões
+            if (window.setStatusEdit) {
+                window.setStatusEdit(statusSalvo);
+            }
+
+            // 3. Lógica da Forma de Pagamento
+            if (statusSalvo.toLowerCase() === 'pago' && d.formaPagamento) {
+                if (window.setPagamentoEdit) {
+                    window.setPagamentoEdit(d.formaPagamento);
+                }
+            } else {
+                // Limpa seleções se for pendente
+                const inputPg = document.getElementById("inputEditFormaPagamento");
+                if (inputPg) inputPg.value = "";
+                document.querySelectorAll('#containerPagamentoEdit .btn-pagamento').forEach(b => b.classList.remove('active'));
+            }
+
+            // 4. Exibe o Modal
+            document.getElementById("editModal").style.display = "flex";
+        }
+    } catch (e) {
+        console.error("Erro ao preparar edição:", e);
+        window.logErroTelegram("prepararEdicao", e.message);
     }
 };
 // CORREÇÃO: A função salvarEdicao estava com um erro de referência na variável 'id' que não existia no escopo. Agora ela pega o ID do input escondido que é preenchido na função prepararEdicao.
 window.salvarEdicao = async () => {
     const id = document.getElementById("editId").value;
+    
+    // 1. Captura os valores dos novos campos de status e pagamento
+    const status = document.getElementById("inputEditStatus").value || "Pago";
+    const formaPagamento = document.getElementById("inputEditFormaPagamento").value;
+    const dataBase = document.getElementById("editData").value;
+
+    // 2. Validação básica (mesma lógica do addDoc)
+    if (status.toLowerCase() === 'pago' && !formaPagamento) {
+        return Swal.fire('Atenção', 'Selecione a forma de pagamento.', 'warning');
+    }
+    if (status.toLowerCase() === 'pendente' && !dataBase) {
+        return Swal.fire('Atenção', 'Insira a data prevista.', 'warning');
+    }
+
     const dados = {
         descricao: document.getElementById("editDescricao").value,
-        valor: parseFloat(document.getElementById("editValor").value),
+        valor: parseFloat(document.getElementById("editValor").value) || 0,
+        formaPagamento: status.toLowerCase() === 'pago' ? formaPagamento : "A definir",
+        data: dataBase || new Date().toISOString().split('T')[0],
+        mes: document.getElementById("editMes").value, 
         data: document.getElementById("editData").value,
-        mes: document.getElementById("editMes").value,
-        status: document.getElementById("editStatus").value
+        status: document.getElementById("inputEditStatus").value
     };
+
     try {
         await updateDoc(doc(db, "lancamentos", id), dados);
+        
         window.fecharModal(); 
         window.carregarLancamentos(); 
-    } catch (e) { window.logErroTelegram("salvarEdicao", e.message); }
+        
+        Toast.fire({
+            icon: 'success',
+            title: 'Alterações salvas!'
+        });
+    } catch (e) { 
+        window.logErroTelegram("salvarEdicao", e.message);
+        Swal.fire('Erro', 'Não foi possível atualizar o registro.', 'error');
+    }
+
+    if (window.verificarPendenciasVisiveis) window.verificarPendenciasVisiveis();
 };
 // linha 514 estava com erro de referência na variável 'id' que não existia no escopo. Agora ela pega o ID do input escondido que é preenchido na função prepararEdicao.
 window.fecharModal = () => document.getElementById("editModal").style.display = "none";
@@ -1286,7 +1544,7 @@ window.deletar = async (id) => {
                 }
             });
             await Promise.all(promises);
-            Toast.fire({ icon: 'success', title: 'Gasto fixo removido do calendário.' });
+            Toast.fire({ icon: 'success', title: 'Registro fixo removido do calendário.' });
         } else {
             // Deleção simples
             await deleteDoc(docRef);
@@ -1516,7 +1774,9 @@ document.getElementById("btnLogin").onclick = async () => {
         }
     };
 }
-// --- CONTROLE DA INTERFACE ---
+        // --- CONTROLE DA INTERFACE ---//
+
+        //
 window.abrirModalPerfil = async () => {
     // Busca dados atuais do usuário
     const snap = await getDoc(doc(db, "usuarios", auth.currentUser.uid));
@@ -1535,10 +1795,35 @@ window.abrirModalPerfil = async () => {
 };
 // Fechar Modal de Perfil
 window.fecharDrawer = () => {
-    document.getElementById("drawerPerfil").classList.remove("active");
-    document.getElementById("overlay").style.display = "none";
-    window.toggleEdicao()
+    // 1. Fecha o Drawer e o Overlay
+    const drawer = document.getElementById("drawerPerfil");
+    const overlay = document.getElementById("overlay");
+    const secao = document.getElementById("secaoEdicao");
+
+    if (drawer) drawer.classList.remove("active");
+    if (overlay) overlay.style.display = "none";
+
+    // 2. O SEU NOVO IF (Baseado em Classe):
+    const sE = document.getElementById("secaoEdicao"); 
+    
+    // Verificamos se a seção de edição tem a classe que a mantém aberta
+    // (Substitua "active" ou "show" pelo nome da classe que você usa para mostrar)
+    if (sE && sE.classList.contains("active")) {
+        
+        console.log("Usuário desistiu: Fechando edição junto com o drawer.");
+        
+      const secao = document.getElementById("secaoEdicao");
+    secao.classList.toggle("aberto");}
+    
+    // Opcional: Rotacionar o ícone de seta (se você quiser dar um toque extra)
+    const seta = document.querySelector(".fa-chevron-down");
+    if (secao.classList.contains("aberto")) {
+        seta.style.transform = "rotate(180deg)";
+    } else {
+        seta.style.transform = "rotate(0deg)";
+    }
 };
+
         // --- NOVAS FUNÇÕES DE APOIO --- //
 
 // Função para abrir o tutorial de uso do aplicativo
@@ -1886,7 +2171,7 @@ window.fecharGerenciadorServicos = () => {
     document.getElementById('modalGerenciadorServicos').style.display = 'none';
     document.getElementById("servicoNome").value = "";
     document.getElementById("servicoValor").value = "";
-    document.getElementById('modal-servicos').style.display = 'none';
+    document.getElementById('modal-servicos').style.displfecharGerenciadorServicosay = 'none';
 
     const form = document.getElementById('formCadastrarServico');
     form.reset();
@@ -2315,7 +2600,6 @@ window.atualizarGraficosBarras = async () => {
     }
 };
 
-
 // ANÁLISE DE PADRÕES PARA SUGESTÃO DE CATEGORIAS
 window.analisarDescricoesParaCategorias = async () => {
     const user = auth.currentUser;
@@ -2528,7 +2812,6 @@ btnInstalar?.addEventListener('click', async () => {
         btnInstalar.style.display = 'none';
     }
 });
-
 // Esconde o botão se o app já estiver instalado
 window.addEventListener('appinstalled', () => {
     console.log('Gestto instalado com sucesso!');
@@ -2666,3 +2949,204 @@ window.limparMeusDadosAntigos = async () => {
         Swal.fire('Erro', 'Falha ao apagar dados.', 'error');
     }
 };
+
+window.setStatus = (s) => {
+    const statusFormatado = s.toLowerCase().trim();
+    const valorFinal = (statusFormatado === 'pago') ? "Pago" : "Pendente";
+    
+    // 1. Identifica os elementos do DOM
+    const inputStatus = document.getElementById("status");
+    const inputData = document.getElementById("data");
+    const groupData = document.getElementById("groupDataNovo");
+    const containerPg = document.getElementById("pagamentoContainerNovo");
+    const labelPg = document.getElementById("labelPagamentoNovo");
+    const labelData = document.querySelector("#groupDataNovo label");
+
+    // 2. Atualiza o valor do status (Garante o "P" maiúsculo)
+    if (inputStatus) inputStatus.value = valorFinal;
+
+    // 3. Sugestão de Data (Sempre sugere HOJE se estiver vazio, mas permite mudar)
+    if (inputData && !inputData.value) {
+        inputData.value = new Date().toISOString().split('T')[0];
+    }
+
+    // 4. Lógica de Exibição (O que aparece e o que some)
+    if (valorFinal === 'Pago') {
+        // --- MODO PAGO ---
+        if (groupData) groupData.classList.remove("hidden");   // MOSTRA a data
+        if (containerPg) containerPg.classList.remove("hidden"); // MOSTRA pagamentos
+        if (labelPg) labelPg.classList.remove("hidden");
+        
+        if (labelData) {
+            labelData.innerHTML = '<i class="fa-solid fa-calendar-check"></i> Data do Pagamento';
+        }
+    } else {
+        // --- MODO PENDENTE ---
+        if (groupData) groupData.classList.remove("hidden");   // MANTÉM a data visível
+        if (containerPg) containerPg.classList.add("hidden");    // ESCONDE pagamentos
+        if (labelPg) labelPg.classList.add("hidden");
+
+        if (labelData) {
+            labelData.innerHTML = '<i class="fa-solid fa-calendar"></i> Data de Vencimento';
+        }
+
+        // LIMPEZA: Se mudou para pendente, "recolhe" a forma de pagamento
+        const fpInput = document.getElementById("formaPagamento");
+        if (fpInput) fpInput.value = "";
+        document.querySelectorAll('#pagamentoContainerNovo .btn-pagamento').forEach(btn => {
+            btn.classList.remove('active');
+        });
+    }
+
+    // 5. Atualiza o visual dos botões de Status (Pago/Pendente)
+    const btnPa = document.getElementById("btnTipoPa");
+    const btnPe = document.getElementById("btnTipoPe");
+    if (btnPa) btnPa.classList.toggle("active", valorFinal === 'Pago');
+    if (btnPe) btnPe.classList.toggle("active", valorFinal === 'Pendente');
+};
+
+window.setPagamento = (metodo) => {
+    // 1. Salva no input hidden (o que vai para o banco de dados)
+    const inputForma = document.getElementById("formaPagamento");
+    if (inputForma) {
+        inputForma.value = metodo;
+    }
+
+    // 2. Seleciona os botões dentro do container correto
+    // Corrigido: Adicionado '#' antes do ID para o seletor funcionar
+    const container = document.getElementById("pagamentoContainerNovo");
+    
+    if (container) {
+        const botoes = container.querySelectorAll('.btn-pagamento');
+        botoes.forEach(btn => {
+            // Verifica se o texto do botão contém o método (ex: 'Pix', 'Dinheiro')
+            // Usamos trim() para remover espaços extras que podem vir do HTML
+            const textoBotao = btn.innerText.trim();
+            btn.classList.toggle("active", textoBotao.includes(metodo));
+        });
+    }
+};
+
+// Gerencia Status no Editar
+window.setStatusEdit = (s, formaPagamentoExistente) => {
+    const statusFormatado = s.toLowerCase().trim();
+    const valorFinal = (statusFormatado === 'pago') ? "Pago" : "Pendente";
+    
+    // 1. Define o valor no input hidden de edição
+    const inputStatus = document.getElementById("editStatus");
+    if (inputStatus) inputStatus.value = valorFinal;
+
+    // 2. Referência dos Elementos do Modal de Edição
+    const groupData = document.getElementById("groupDataEdit");
+    const containerPg = document.getElementById("containerPagamentoEdit");
+    const labelPg = document.getElementById("labelPagamentoEdit"); // Verifique se este ID existe no seu HTML
+    const labelData = document.querySelector("#groupDataEdit label");
+    const inputData = document.getElementById("editData");
+    const inputForma = document.getElementById("editFormaPagamento");
+
+    // 3. Sugestão de data (se estiver vazio, sugere hoje para facilitar pro tester)
+    if (inputData && !inputData.value) {
+        inputData.value = new Date().toISOString().split('T')[0];
+    }
+
+    if (valorFinal === 'Pago') {
+        // --- MODO PAGO ---
+        if (groupData) groupData.classList.remove("hidden");
+        if (containerPg) containerPg.classList.remove("hidden");
+        if (labelPg) labelPg.classList.remove("hidden");
+        
+        if (labelData) {
+            labelData.innerHTML = '<i class="fa-solid fa-calendar-check"></i> Data do Pagamento';
+        }
+        
+        // Se já existir uma forma de pagamento (vindo do banco), preenche e ativa o ícone
+        if (formaPagamentoExistente && inputForma) {
+            inputForma.value = formaPagamentoExistente;
+            
+            // Procura o botão que tem o onclick com essa forma de pagamento e marca como active
+            document.querySelectorAll('#pagamentoContainerEdit .btn-pagamento').forEach(btn => {
+                if (btn.getAttribute('onclick')?.includes(formaPagamentoExistente)) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        } containerPagamentoEdit
+    } else {
+        // --- MODO PENDENTE ---
+        if (groupData) groupData.classList.remove("hidden");
+        if (containerPg) containerPg.classList.add("hidden");
+        if (labelPg) labelPg.classList.add("hidden");
+
+        if (labelData) {
+            labelData.innerHTML = '<i class="fa-solid fa-calendar"></i> Data de Vencimento';
+        }
+
+        // RECOLHA: Limpa a forma de pagamento e desativa ícones ao mudar para Pendente
+        if (inputForma) inputForma.value = "";
+        
+        document.querySelectorAll('#pagamentoContainerEdit .btn-pagamento').forEach(btn => {
+            btn.classList.remove('active');
+        });
+    }
+
+    // 4. Ajusta o visual dos botões de status (Pago/Pendente) no modal de edição
+    const btnPa = document.getElementById("btnEditPa");
+    const btnPe = document.getElementById("btnEditPe");
+    
+    if (btnPa) btnPa.classList.toggle("active", valorFinal === 'Pago');
+    if (btnPe) btnPe.classList.toggle("active", valorFinal === 'Pendente');
+};
+
+// Gerencia Forma de Pagamento no Editar
+window.setPagamentoEdit = (metodo) => {
+    document.getElementById("inputEditFormaPagamento").value = metodo;
+    const botoes = document.querySelectorAll('#containerPagamentoEdit .btn-pagamento');
+    botoes.forEach(btn => {
+        btn.classList.toggle("active", btn.innerText.includes(metodo));
+    });
+};
+
+window.sincronizarMesPelaData = (dataValor, idSelectMes) => {
+    if (!dataValor) return;
+
+    const meses = [
+        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ];
+
+    // Extrai o mês da data (YYYY-MM-DD)
+    const partes = dataValor.split("-");
+    const mesIndice = parseInt(partes[1]) - 1; // Ex: "04" vira 3 (Abril)
+
+    const selectMes = document.getElementById(idSelectMes);
+    if (selectMes && meses[mesIndice]) {
+        const mesIdentificado = meses[mesIndice];
+        
+        // Só altera se for diferente, para evitar loops
+        if (selectMes.value !== mesIdentificado) {
+            selectMes.value = mesIdentificado;
+            
+            // Opcional: Feedback visual rápido no console do navegador
+            console.log(`Lançamento redirecionado para: ${mesIdentificado}`);
+        }
+    }
+};
+
+
+// Este código avisa no console toda vez que o valor do input status mudar
+const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+        if (mutation.type === "attributes" && mutation.attributeName === "value") {
+            console.log("O status mudou para:", mutation.target.value);
+            if (mutation.target.value === "pago") {
+                console.error("ALERTA: Alguém injetou 'pago' minúsculo!");
+            }
+        }
+    });
+});
+
+const inputStatus = document.getElementById("status");
+if (inputStatus) {
+    observer.observe(inputStatus, { attributes: true });
+}

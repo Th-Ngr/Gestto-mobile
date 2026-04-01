@@ -5,7 +5,7 @@
   "start_url": "/Gestto-mobile/index.html",
   "scope": "/Gestto-mobile/",
   "display": "standalone",
-  "background_color": "#FFFFF",
+  "background_color": "#f8fafcF",
   "theme_color": "#20B2AA",
   "icons": [
     {

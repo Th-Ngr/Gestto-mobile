@@ -514,6 +514,45 @@ body {
     cursor: pointer; 
     }
 
+    .form-group {
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    max-height: 80px;
+    opacity: 1;
+    overflow: hidden;
+    }
+
+    .form-group.hidden {
+    max-height: 0;
+    opacity: 0;
+    margin-bottom: 0;
+    padding: 0;
+    visibility: hidden;
+    pointer-events: none; /* Impede cliques enquanto invisível */
+}
+.pagamento-selector {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* Duas colunas iguais */
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.pagamento-selector .btn-tipo {
+    padding: 10px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.pagamento-selector .btn-tipo.active {
+    background: var(--primary); /* Cor Tiffany que você usa */
+    color: white;
+    border-color: var(--primary);
+}
+
 /* SELETOR DE TIPO (ENTRADA/SAÍDA) */
 
     .tipo-selector {
@@ -533,21 +572,109 @@ body {
         cursor: pointer;
         transition: 0.3s;
     }
+    #btnTipoPe.active {
+        background-color: var(--warning) !important; 
+        color: var(--text) !important;
+    }
+      #btnTipoPa.active {
+        background-color: var(--success) !important; 
+        color: var(--text) !important;
+    }
+
+    .btnTipoPa{
+        background: var(--background);
+    }
+    .btnTipoPe{
+        background: var(--warning);
+    }
+
     .btn-tipo.active#btnTipoE {
         background: var(--success);
-        color: var(--text);
+        color: white;
         border-color: var(--success);
     }
 
     .btn-tipo.active#btnTipoS {
         background: var(--danger);
-        color: var(--text);
-        border-color: var(--danger);
-    }.btn-tipo.active#btnTipoS {
-        background: var(--danger);
-        color: var(--text);
+        color: white;
         border-color: var(--danger);
     }
+
+    /* Estilo Base dos Botões de Status no Novo Lançamento */
+.btn-tipo1 {
+    flex: 1;
+    padding: 12px;
+    border: var(--border);
+    border-radius: 10px;
+    background: var(--background);
+    color: var(--text);
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+/* Cores de Ativação Específicas (Usando suas variáveis) */
+#btnTipoPa.active {
+    background-color: var(--success) !important; 
+    color: white !important;
+    border-color: var(--success) !important;
+}
+
+#btnTipoPe.active {
+    background-color: var(--warning) !important; 
+    color: white !important;
+    border-color: var(--warning) !important;
+}
+#btnEditPa.active{
+    background-color: var(--success) !important; 
+    color: white !important;
+    border-color: var(--success) !important;
+}
+
+#btnEditPe.active{
+    background-color: var(--warning) !important; 
+    color: white !important;
+    border-color: var(--warning) !important;
+}
+
+/* Configuração dos Containers para Animação de Deslize */
+#groupDataNovo, 
+#pagamentoContainerNovo, 
+#labelPagamentoNovo{
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    max-height: 200px; /* Altura suficiente para os botões ou input */
+    opacity: 1;
+    overflow: hidden;
+    margin-bottom: 15px;
+    display: block;
+}
+
+#labelPagamentoEdit{
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    max-height: 200px; /* Altura suficiente para os botões ou input */
+    opacity: 1;
+    overflow: hidden;
+    margin-bottom: 15px;
+    display: block;
+}
+
+.hidden {
+    max-height: 0 !important;
+    opacity: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    pointer-events: none;
+    border: none !important;
+}
+
+/* Ajuste do Flex para os botões de pagamento */
+#pagamentoContainerNovo {
+    display: flex; 
+    justify-content: space-between;
+    gap: 8px;
+}
 
     .fixa-row {
         display: flex;
@@ -805,35 +932,6 @@ body {
         background: var(--background) !important;
         box-shadow: 0 5px 20px rgba(0,0,0,0.2) !important;
     }
-/*Banner de novidades*/
-.txt-novidades-modal{
-  background: var(--background);
-  color: var(--white);
-  padding: 10px;
-  border-radius: 8px;
-  font-size: 14px;
-  text-align: left;
-  max-height: 150px;
-  overflow-y: auto;
-  margin-bottom: 20px;
-}
-
-.modal-novidades{
-  display: block;
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 90%;
-  max-width: 400px;
-  background: Var(--background);
-  color: #333;
-  padding: 20px;
-  border-radius: 15px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-  z-index: 10000;
-  text-align: center;
-  font-family: sans-serif;}
 /* Deixa a barra de progresso do tempo visível para o usuário saber quanto falta */
     /* Cor padrão do timer (Modo Claro) */
 .swal2-timer-progress-bar {
@@ -869,12 +967,13 @@ body.dark-theme .swal2-timer-progress-bar {
 
 /* Cor dos botões dentro do aviso */
 .swal2-confirm {
-    background-color: var(--primary) !important;
+    background-color: var(--success) !important;
     box-shadow: none !important;
+    color:white;
 }
 
 .swal2-cancel {
-    background: #64748b !important;
+    background:var(--danger)!important;
 }
 
 #btn-settings {
@@ -915,12 +1014,51 @@ body.dark-theme .swal2-timer-progress-bar {
             opacity: 1;
         }
     }
+/* Animação antiga de surgir girando */
+@keyframes surgirGirando {
+    from {
+        transform: rotate(0deg) scale(0);
+        opacity: 0;
+    }
+    to {
+        transform: rotate(-180deg) scale(1);
+        opacity: 1;
+    }
+}
+
+
+/* Animação de saída: Volta pro centro, diminui e some */
+@keyframes sumirGirando {
+    from {
+        transform: rotate(-180deg) scale(1);
+        opacity: 1;
+    }
+    to {
+        transform: rotate(0deg) scale(0);
+        opacity: 0;
+    }
+}
+
+.animacao-sumir {
+    animation: sumirGirando 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* Classe de rotação simples para quando ele já existe na tela */
+.btn-principal-perfil {
+    transform: rotate(180deg) !important;
+    transition: transform 0.4s ease, background-color 0.3s;
+    background-color: var(--white) !important;
+    color: var(--primary) !important;
+    border: 1px solid var(--primary) !important;
+}
 
 /* Classe que aplica a animação */
     .animacao-redemoinho {
         animation: spinIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
     }
-
+.animacao-surgir {
+    animation: surgirGirando 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
 /* Definição da animação de redemoinho */
     @keyframes spinIn {
         from {
@@ -1031,14 +1169,28 @@ body.dark-theme .swal2-timer-progress-bar {
     /* Transição suave para o giro e cor */
     transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), background-color 0.3s;
 }
-
 /* Classe de Metamorfose (Perfil) */
-.btn-principal-perfil {
-    transform: rotate(-180deg) !important;
-    /* Opcional: mudar a cor do botão no perfil para destacar que mudou a função */
-    background-color: var(--white) !important;
-    color: var(--primary) !important;
-    border: 1px solid var(--primary);
+/* Essa classe agora serve para os dois botões girarem */
+
+
+/* Garanta que o btn-s tenha transição para o giro */
+.btn-sec {
+        transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), background-color 0.3s;
+        position: absolute;
+        right: 15px; /* Lado direito */
+        top: 15px;
+        background:var(--background);
+        color: var(--primary);
+        border: none;
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        font-size: 18px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
 }
 
 @keyframes surgimentoBotao {
@@ -1081,4 +1233,32 @@ body.dark-theme .swal2-timer-progress-bar {
 .btn-perfil-item i {
     color: var(--primary); /* Mantém sua cor de destaque nos ícones */
     font-size: 18px;
+}
+
+.pagamento-container {
+    display: flex; /* Alinha em linha */
+    justify-content: space-between; /* Distribui o espaço */
+    gap: 5px; /* Espaço entre os botões */
+    width: 100%;
+    margin-bottom: 15px;
+}
+
+.btn-pagamento {
+    flex: 1; /* Faz todos terem o mesmo tamanho */
+    padding: 8px 2px; /* Padding menor para caber em telas pequenas */
+    font-size: 11px; 
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--background);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap; 
+}
+
+/* Estado quando o botão for clicado */
+.btn-pagamento.active {
+    background-color: var(--success) !important;
+    color: white !important;
+    border-color: var(--primary);
 }
