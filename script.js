@@ -1265,7 +1265,7 @@ window.addLancamento = async () => {
         const statusFinalParaSalvar = (statusParaComparar === 'pago') ? "Pago" : "Pendente";
         
         // Se for Pago, usa a formaPagamento. Se for Pendente, grava "Pendente" (com P maiúsculo)
-        const pagamentoFinalParaSalvar = (statusFinalParaSalvar === "Pago") ? formaPagamento : "Pendente";
+        const pagamentoFinalParaSalvar = (statusFinalParaSalvar === "Pago") ? formaPagamento : "";
 
         const categoriaIdentificada = typeof window.identificarCategoriaPelaDescricao === "function" 
             ? window.identificarCategoriaPelaDescricao(descricao) 
@@ -1427,85 +1427,107 @@ window.prepararEdicao = async (id) => {
             document.getElementById("editDescricao").value = d.descricao || "";
             document.getElementById("editValor").value = d.valor || 0;
             document.getElementById("editData").value = d.data || "";
-            
+            // Adicionado campo de cliente se você estiver usando
+            if(document.getElementById("editCliente")) {
+                document.getElementById("editCliente").value = d.cliente || "";
+            }
 
-            // 2. Lógica do Status (Botões)
-            const statusSalvo = d.status || "Pago";
+            // 2. Lógica do Status
+            // Garantimos que pegamos o status correto (Pago ou Pendente)
+            const statusSalvo = d.status || "Pendente";
             
-            // ATENÇÃO: Verifique se no seu HTML o input hidden tem esse ID exato
-            const inputStatus = document.getElementById("inputEditStatus");
+            // SINCRONIA DE ID: Use o mesmo ID que está no setStatusEdit
+            const inputStatus = document.getElementById("editStatus");
             if (inputStatus) {
                 inputStatus.value = statusSalvo;
             }
 
-            // Dispara a animação e as cores dos botões
+            // 3. Lógica da Forma de Pagamento (Sincronizada com o Banco)
+            // IMPORTANTE: Mudamos de d.formaPagamento para d.Pagamento
+            const formaSalva = d.Pagamento || "";
+
+            // Dispara a interface visual (Cores, botões e labels)
             if (window.setStatusEdit) {
-                window.setStatusEdit(statusSalvo);
+                // Passamos o status e a forma de pagamento para a função visual
+                window.setStatusEdit(statusSalvo, formaSalva);
             }
 
-            // 3. Lógica da Forma de Pagamento
-            if (statusSalvo.toLowerCase() === 'pago' && d.formaPagamento) {
-                if (window.setPagamentoEdit) {
-                    window.setPagamentoEdit(d.formaPagamento);
-                }
-            } else {
-                // Limpa seleções se for pendente
-                const inputPg = document.getElementById("inputEditFormaPagamento");
-                if (inputPg) inputPg.value = "";
-                document.querySelectorAll('#containerPagamentoEdit .btn-pagamento').forEach(b => b.classList.remove('active'));
-            }
+            // 4. Exibe o Modal (Certifique-se que o ID é 'editModal' ou 'modalEdicao')
+            const modal = document.getElementById("editModal");
+            if (modal) modal.style.display = "flex";
 
-            // 4. Exibe o Modal
-            document.getElementById("editModal").style.display = "flex";
         }
     } catch (e) {
         console.error("Erro ao preparar edição:", e);
-        window.logErroTelegram("prepararEdicao", e.message);
+        if (window.logErroTelegram) window.logErroTelegram("prepararEdicao", e.message);
     }
 };
 // CORREÇÃO: A função salvarEdicao estava com um erro de referência na variável 'id' que não existia no escopo. Agora ela pega o ID do input escondido que é preenchido na função prepararEdicao.
 window.salvarEdicao = async () => {
-    const id = document.getElementById("editId").value;
-    
-    // 1. Captura os valores dos novos campos de status e pagamento
-    const status = document.getElementById("inputEditStatus").value || "Pago";
-    const formaPagamento = document.getElementById("inputEditFormaPagamento").value;
-    const dataBase = document.getElementById("editData").value;
+    // 1. Captura usando os IDs EXATOS do seu HTML
+    const elId = document.getElementById("editId");
+    const elStatus = document.getElementById("inputEditStatus");
+    const elForma = document.getElementById("inputEditFormaPagamento");
+    const elData = document.getElementById("editData");
+    const elDesc = document.getElementById("editDescricao");
+    const elValor = document.getElementById("editValor");
 
-    // 2. Validação básica (mesma lógica do addDoc)
-    if (status.toLowerCase() === 'pago' && !formaPagamento) {
+    // Validação de segurança: se o ID não existir, o JS para antes de dar erro
+    if (!elId || !elId.value) {
+        console.error("ID de edição não encontrado.");
+        return;
+    }
+
+    const id = elId.value;
+    const status = elStatus ? elStatus.value : "Pendente";
+    const formaPagamento = elForma ? elForma.value : "";
+    const dataInput = elData ? elData.value : "";
+
+    // 2. Validações para o usuário final
+    if (status === 'Pago' && !formaPagamento) {
         return Swal.fire('Atenção', 'Selecione a forma de pagamento.', 'warning');
     }
-    if (status.toLowerCase() === 'pendente' && !dataBase) {
-        return Swal.fire('Atenção', 'Insira a data prevista.', 'warning');
+    if (!dataInput) {
+        return Swal.fire('Atenção', 'A data é obrigatória.', 'warning');
     }
 
+    // 3. Montagem do Objeto para o Firebase
     const dados = {
-        descricao: document.getElementById("editDescricao").value,
-        valor: parseFloat(document.getElementById("editValor").value) || 0,
-        formaPagamento: status.toLowerCase() === 'pago' ? formaPagamento : "A definir",
-        data: dataBase || new Date().toISOString().split('T')[0],
-        mes: document.getElementById("editMes").value, 
-        data: document.getElementById("editData").value,
-        status: document.getElementById("inputEditStatus").value
+        descricao: elDesc ? elDesc.value : "",
+        valor: elValor ? parseFloat(elValor.value) : 0,
+        status: status,
+        // Garante que o nome da chave no banco seja 'Pagamento'
+        Pagamento: (status === 'Pago') ? formaPagamento : "",
+        data: dataInput
     };
 
     try {
-        await updateDoc(doc(db, "lancamentos", id), dados);
+        const docRef = doc(db, "lancamentos", id);
+        await updateDoc(docRef, dados);
         
-        window.fecharModal(); 
-        window.carregarLancamentos(); 
+        // 4. Sucesso e Refresh
+        window.fecharModal(); // Chama sua função de fechar
         
-        Toast.fire({
+        if (window.carregarLancamentos) {
+            window.carregarLancamentos(); 
+        } else if (window.carregarDados) {
+            window.carregarDados();
+        }
+
+        Swal.fire({
             icon: 'success',
-            title: 'Alterações salvas!'
+            title: 'Alterações salvas!',
+            timer: 1500,
+            showConfirmButton: false,
+            toast: true,
+            position: 'top-end'
         });
+
     } catch (e) { 
-        window.logErroTelegram("salvarEdicao", e.message);
+        console.error("Erro ao salvar edição:", e);
+        if (window.logErroTelegram) window.logErroTelegram("salvarEdicao", e.message);
         Swal.fire('Erro', 'Não foi possível atualizar o registro.', 'error');
     }
-
-    if (window.verificarPendenciasVisiveis) window.verificarPendenciasVisiveis();
 };
 // linha 514 estava com erro de referência na variável 'id' que não existia no escopo. Agora ela pega o ID do input escondido que é preenchido na função prepararEdicao.
 window.fecharModal = () => document.getElementById("editModal").style.display = "none";
@@ -3027,28 +3049,30 @@ window.setPagamento = (metodo) => {
     }
 };
 
-// Gerencia Status no Editar
+    // Gerencia Status no Editar
 window.setStatusEdit = (s, formaPagamentoExistente) => {
-    const statusFormatado = s.toLowerCase().trim();
+    // 1. Normalização do Valor (Garante "Pago" ou "Pendente")
+    const statusFormatado = s ? s.toLowerCase().trim() : "Pendente";
     const valorFinal = (statusFormatado === 'pago') ? "Pago" : "Pendente";
     
-    // 1. Define o valor no input hidden de edição
-    const inputStatus = document.getElementById("editStatus");
+    // 2. Fonte de Verdade: Atualiza o input hidden de edição
+    const inputStatus = document.getElementById("inputEditStatus");
     if (inputStatus) inputStatus.value = valorFinal;
 
-    // 2. Referência dos Elementos do Modal de Edição
+    // 3. Referência dos Elementos do Modal (IDs do seu HTML de edição)
     const groupData = document.getElementById("groupDataEdit");
     const containerPg = document.getElementById("containerPagamentoEdit");
-    const labelPg = document.getElementById("labelPagamentoEdit"); // Verifique se este ID existe no seu HTML
+    const labelPg = document.getElementById("labelPagamentoEdit"); 
     const labelData = document.querySelector("#groupDataEdit label");
     const inputData = document.getElementById("editData");
-    const inputForma = document.getElementById("editFormaPagamento");
+    const inputForma = document.getElementById("inputEditFormaPagamento");
 
-    // 3. Sugestão de data (se estiver vazio, sugere hoje para facilitar pro tester)
+    // 4. Manutenção de Data (Evita resetar se já houver valor do banco)
     if (inputData && !inputData.value) {
         inputData.value = new Date().toISOString().split('T')[0];
     }
 
+    // 5. Lógica de Exibição (Baseada na sua função de Inserção)
     if (valorFinal === 'Pago') {
         // --- MODO PAGO ---
         if (groupData) groupData.classList.remove("hidden");
@@ -3059,19 +3083,22 @@ window.setStatusEdit = (s, formaPagamentoExistente) => {
             labelData.innerHTML = '<i class="fa-solid fa-calendar-check"></i> Data do Pagamento';
         }
         
-        // Se já existir uma forma de pagamento (vindo do banco), preenche e ativa o ícone
-        if (formaPagamentoExistente && inputForma) {
-            inputForma.value = formaPagamentoExistente;
+        // Sincroniza a forma de pagamento se ela vier do banco (Edição)
+        const fpParaUsar = formaPagamentoExistente || (inputForma ? inputForma.value : "");
+        
+        if (fpParaUsar && inputForma) {
+            inputForma.value = fpParaUsar;
             
-            // Procura o botão que tem o onclick com essa forma de pagamento e marca como active
-            document.querySelectorAll('#pagamentoContainerEdit .btn-pagamento').forEach(btn => {
-                if (btn.getAttribute('onclick')?.includes(formaPagamentoExistente)) {
+            // Marca o botão correspondente como ativo
+            document.querySelectorAll('#containerPagamentoEdit .btn-pagamento').forEach(btn => {
+                // Verifica se o texto ou o clique do botão contém a forma de pagamento
+                if (btn.getAttribute('onclick')?.includes(`'${fpParaUsar}'`)) {
                     btn.classList.add('active');
                 } else {
                     btn.classList.remove('active');
                 }
             });
-        } containerPagamentoEdit
+        }
     } else {
         // --- MODO PENDENTE ---
         if (groupData) groupData.classList.remove("hidden");
@@ -3082,21 +3109,22 @@ window.setStatusEdit = (s, formaPagamentoExistente) => {
             labelData.innerHTML = '<i class="fa-solid fa-calendar"></i> Data de Vencimento';
         }
 
-        // RECOLHA: Limpa a forma de pagamento e desativa ícones ao mudar para Pendente
+        // LIMPEZA: Remove dados de pagamento ao voltar para Pendente
         if (inputForma) inputForma.value = "";
-        
-        document.querySelectorAll('#pagamentoContainerEdit .btn-pagamento').forEach(btn => {
+        document.querySelectorAll('#containerPagamentoEdit .btn-pagamento').forEach(btn => {
             btn.classList.remove('active');
         });
     }
 
-    // 4. Ajusta o visual dos botões de status (Pago/Pendente) no modal de edição
+    // 6. Atualiza o visual dos botões de Status (Botões do Modal de Edição)
     const btnPa = document.getElementById("btnEditPa");
     const btnPe = document.getElementById("btnEditPe");
     
     if (btnPa) btnPa.classList.toggle("active", valorFinal === 'Pago');
     if (btnPe) btnPe.classList.toggle("active", valorFinal === 'Pendente');
 };
+
+
 
 // Gerencia Forma de Pagamento no Editar
 window.setPagamentoEdit = (metodo) => {
@@ -3106,47 +3134,3 @@ window.setPagamentoEdit = (metodo) => {
         btn.classList.toggle("active", btn.innerText.includes(metodo));
     });
 };
-
-window.sincronizarMesPelaData = (dataValor, idSelectMes) => {
-    if (!dataValor) return;
-
-    const meses = [
-        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-    ];
-
-    // Extrai o mês da data (YYYY-MM-DD)
-    const partes = dataValor.split("-");
-    const mesIndice = parseInt(partes[1]) - 1; // Ex: "04" vira 3 (Abril)
-
-    const selectMes = document.getElementById(idSelectMes);
-    if (selectMes && meses[mesIndice]) {
-        const mesIdentificado = meses[mesIndice];
-        
-        // Só altera se for diferente, para evitar loops
-        if (selectMes.value !== mesIdentificado) {
-            selectMes.value = mesIdentificado;
-            
-            // Opcional: Feedback visual rápido no console do navegador
-            console.log(`Lançamento redirecionado para: ${mesIdentificado}`);
-        }
-    }
-};
-
-
-// Este código avisa no console toda vez que o valor do input status mudar
-const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-        if (mutation.type === "attributes" && mutation.attributeName === "value") {
-            console.log("O status mudou para:", mutation.target.value);
-            if (mutation.target.value === "pago") {
-                console.error("ALERTA: Alguém injetou 'pago' minúsculo!");
-            }
-        }
-    });
-});
-
-const inputStatus = document.getElementById("status");
-if (inputStatus) {
-    observer.observe(inputStatus, { attributes: true });
-}
