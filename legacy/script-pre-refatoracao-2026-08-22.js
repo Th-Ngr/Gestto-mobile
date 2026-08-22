@@ -32,9 +32,6 @@ import {
     orderBy,
 } 
 from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { iniciarMonitoramentoVersao } from "./js/sistema/versionamento.js";
-import { criarLoggerErro } from "./js/sistema/monitoramento.js";
-
 
         // Configuração do Firebase //
 const firebaseConfig = {
@@ -48,6 +45,7 @@ window.solicitarNotificacao = () => {
         Notification.requestPermission();
     }
 };
+Swal
 const recuperarSenha = (email) => {
     sendPasswordResetEmail(auth, email)
         .then(() => {
@@ -58,7 +56,14 @@ const recuperarSenha = (email) => {
         });
 };
 
-// A notificação de vencimentos é tratada pelo fluxo de pendências.\n
+// Chame isso na verificação se for "hoje"
+if (Notification.permission === "granted" && p.status === "hoje") {
+    new Notification("Vencimento Hoje!", {
+        body: `O pagamento de ${p.nome} (R$ ${p.valor}) vence hoje!`,
+        icon: "sua_logo.png"
+});
+}
+
 
 
 // --- SERVICE WORKER (PWA) ---
@@ -74,14 +79,6 @@ const db = initializeFirestore(app, {
         tabManager: persistentMultipleTabManager()
     })
 });
-
-// Serviços de sistema extraídos do script principal.
-inicializarMonitoramento(db, auth);
-import {
-    inicializarMonitoramento
-} from "./js/sistema/monitoramento.js";
-
-
 
 // 3. Constantes e Utilitários
 const months = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -102,6 +99,40 @@ const Toast = Swal.mixin({
 });
 
 // 4. Função de Cadastro Profissional
+async function cadastrarUsuario(email, senha) {
+    try {
+        // Criar o usuário no Firebase Auth
+        const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
+        const user = userCredential.user;
+
+        // Disparar e-mail de verificação imediatamente
+        await sendEmailVerification(user);
+
+        // Criar o documento do usuário no Firestore (Importante para comercializar)
+        await setDoc(doc(db, "usuarios", user.uid), {
+            email: user.email,
+            dataCriacao: new Date(),
+            status: "aguardando_verificacao",
+            plano: "free"
+        });
+
+        Swal.fire({
+            title: 'Sucesso!',
+            html: `Conta criada para <b>${email}</b>.<br><br>Enviamos um link de confirmação. Você precisa validar seu e-mail para acessar o sistema.`,
+            icon: 'success',
+            confirmButtonColor: 'var(--success)'
+        });
+
+    } catch (error) {
+        console.error("Erro no cadastro:", error);
+        let mensagem = "Não foi possível criar a conta.";
+        
+        if (error.code === 'auth/email-already-in-use') mensagem = "Este e-mail já está em uso.";
+        if (error.code === 'auth/weak-password') mensagem = "A senha deve ter pelo menos 6 caracteres.";
+        
+        Swal.fire('Erro no Cadastro', mensagem, 'error');
+    }
+}
 
 // Toast para Avisos do Sistema / Telegram
 const AlertToast = Swal.mixin({
@@ -121,8 +152,193 @@ let categoriasAtivas = []; // Será preenchida ao carregar o app
 let promptInstalacao; // Variável global para armazenar o evento de instalação da PWA
 let cronometroAtivo = false; // Evita múltiplos timers simultâneos de atualização
 
-// --- SISTEMA DE VERSÃO E MANUTENÇÃO ---
-// A implementação foi extraída para js/sistema/versionamento.js.
+// Função que "escuta" o Bot de Suporte
+onSnapshot(doc(db, "configuracoes", "sistema"), (snapshot) => {
+    if (snapshot.exists()) {
+        const dados = snapshot.data();
+        const versaoNoFirebase = dados.versaoApp;
+        const versaoNoCache = localStorage.getItem("versao_cache");
+
+        // 1. LIMPEZA INICIAL: Se algo mudar, fechamos o que estava aberto para reavaliar
+        // Isso evita que o banner de manutenção "vire" o de atualização sem resetar o timer
+        
+         if (dados.emManutencao === true) {
+            Swal.fire({
+                toast: true, position: 'top', icon: 'warning',
+                title: 'MANUTENÇÃO ATIVA', text: dados.mensagem,
+                timer: null, showConfirmButton: false, backdrop: false,
+                customClass: { popup: 'banner-manutencao-fixo' }
+            });
+            
+        }
+
+         
+        if (versaoNoCache !== versaoNoFirebase) {
+            let segundosRestantes = 60;
+
+            Swal.fire({
+                toast: true,
+                position: 'top',
+                icon: 'info',
+                title: `Nova versão ${versaoNoFirebase} disponível`,
+                html: `Atualizando em <b>${segundosRestantes}</b> segundos...<br><small>${dados.mensagemUpdate || ''}</small>`,
+                timer: 60000,
+                timerProgressBar: true,
+                showConfirmButton: false,
+                backdrop: false,
+                customClass: { popup: 'banner-atualizacao-minuto' },
+                didOpen: () => {
+                    const b = Swal.getHtmlContainer().querySelector('b');
+                    const timerInterval = setInterval(() => {
+                        segundosRestantes--;
+                        if (b) b.textContent = segundosRestantes;
+                        if (segundosRestantes <= 0) {
+                            clearInterval(timerInterval);
+                            // Salva a nova versão no cache ANTES de recarregar
+                            localStorage.setItem("versao_cache", versaoNoFirebase);
+                            window.location.reload(); // Recarrega a página
+                        }
+                    }, 1000);
+                }
+            });
+        } else {
+            // Se as versões forem iguais, garantimos que não há Toasts de atualização abertos
+            // Mas cuidado para não fechar outros Toasts legítimos! 
+            // Se quiser ser específico, use uma verificação de classe.
+        }
+    }
+});
+
+// Função que atualiza a versão do service-worker e força o reload do app quando o admin subir uma nova versão no Firebase.
+onSnapshot(doc(db, "configuracoes", "sistema"), (snapshot) => {
+    if (snapshot.exists()) {
+        const dados = snapshot.data();
+        
+        // 1. SINCRONIZAÇÃO INICIAL (Onde o erro costuma nascer)
+        // Se não existir versão no navegador, pegamos a do banco para evitar o loop.
+        if (!localStorage.getItem('app_version')) {
+            localStorage.setItem('app_version', (dados.versaoApp || "1.0.0").trim());
+            console.log("✅ Versão sincronizada com o Firebase no primeiro acesso.");
+            return; 
+        }
+
+        // Definimos as constantes aqui dentro para não dar ReferenceError
+        const versaoNoNavegador = (localStorage.getItem('app_version') || "1.0.0").trim();
+        const versaoNoBanco = (dados.versaoApp || "").trim();
+
+        console.log(`🔎 Verificação: Local(${versaoNoNavegador}) | Banco(${versaoNoBanco})`);
+
+        // --- BLOCO A: EXIBIR O MODAL DE NOVIDADES (PÓS-RELOAD) ---
+        if (versaoNoBanco === versaoNoNavegador && localStorage.getItem('mostrar_novidades') === 'true') {
+            localStorage.removeItem('mostrar_novidades');
+
+            // Garantimos que o código espere o HTML carregar
+            const exibirModal = () => {
+                const modal = document.getElementById("modal-novidades");
+                const overlay = document.getElementById("modal-overlay");
+                const txtVersao = document.getElementById("txt-versao-modal");
+                const txtNovidades = document.getElementById("txt-novidades-modal");
+
+                if (modal && overlay) {
+                    txtVersao.innerText = `Versão: ${versaoNoBanco}`;
+                    txtNovidades.innerText = dados.novidades || "Melhorias gerais no sistema.";
+                    modal.style.display = "block";
+                    overlay.style.display = "block";
+                }
+            };
+
+            if (document.readyState === 'complete') {
+                exibirModal();
+            } else {
+                window.addEventListener('load', exibirModal);
+            }
+            return;
+        }
+
+        // --- BLOCO B: DETECTAR ATUALIZAÇÃO (TIMER) ---
+        if (versaoNoBanco !== "" && versaoNoBanco !== versaoNoNavegador) {
+            
+            if (window.atualizacaoEmCurso) return;
+            window.atualizacaoEmCurso = true;
+
+            const banner = document.getElementById("banner-admin");
+            if (banner) banner.style.display = "block";
+
+            let tempoRestante = (dados.tempoParaAtualizar || 1) * 60;
+
+            const contador = setInterval(() => {
+                tempoRestante--;
+                const txtAdmin = document.getElementById("txt-admin");
+                if (txtAdmin) txtAdmin.innerText = `Nova versão ${versaoNoBanco} disponível. Atualizando em ${tempoRestante}s...`;
+
+                if (tempoRestante <= 0) {
+                    clearInterval(contador);
+
+                    // Gravamos a versão do BANCO no local para o navegador "saber" que atualizou
+                    localStorage.setItem('app_version', versaoNoBanco);
+                    localStorage.setItem('mostrar_novidades', 'true');
+
+                    setTimeout(() => {
+                        window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
+                    }, 500);
+                }
+            }, 1000);
+        }
+    }
+});
+
+// Função que "escuta" o Bot de Suporte para mostrar novidades ou banner de atualização//
+onSnapshot(doc(db, "configuracoes", "sistema"), (snapshot) => {
+    if (snapshot.exists()) {
+        const dados = snapshot.data();
+        
+        // 1. SINCRONIZAÇÃO INICIAL (Evita loop no primeiro acesso)
+        if (!localStorage.getItem('app_version')) {
+            localStorage.setItem('app_version', (dados.versaoApp || "1.0.0").trim());
+            console.log("✅ Versão inicial sincronizada.");
+            return; 
+        }
+
+        const versaoNoNavegador = localStorage.getItem('app_version').trim();
+        const versaoNoBanco = (dados.versaoApp || "").trim();
+
+        // --- BLOCO A: EXIBIR O MODAL DE NOVIDADES (PÓS-RELOAD) ---
+        if (versaoNoBanco === versaoNoNavegador && localStorage.getItem('mostrar_novidades') === 'true') {
+            localStorage.removeItem('mostrar_novidades');
+
+            // Esperamos o 'load' para garantir que o Modal já exista no DOM
+            window.addEventListener('load', () => {
+                const modal = document.getElementById("modal-novidades");
+                const overlay = document.getElementById("modal-overlay");
+                const txtVersao = document.getElementById("txt-versao-modal");
+                const txtNovidades = document.getElementById("txt-novidades-modal");
+
+                if (modal && overlay) {
+                    txtVersao.innerText = `Versão: ${versaoNoBanco}`;
+                    txtNovidades.innerText = dados.novidades || "Melhorias gerais no sistema.";
+                    
+                    modal.style.display = "block";
+                    overlay.style.display = "block";
+                }
+            });
+            return;
+        }
+
+        // --- BLOCO B: DETECTAR ATUALIZAÇÃO (BANNER + TIMER) ---
+        if (versaoNoBanco !== "" && versaoNoBanco !== versaoNoNavegador) {
+            
+            // Evita múltiplos timers caso o admin atualize várias vezes seguidas//
+            if (window.atualizacaoEmCurso) return;
+            window.atualizacaoEmCurso = true;
+
+            const banner = document.getElementById("banner-admin");
+            if (banner) banner.style.display = "block";
+
+            let tempoRestante = (dados.tempoParaAtualizar || 1) * 60;
+
+        }
+    }
+});
 // --- FUNÇÃO PARA FECHAR O MODAL DE NOVIDADES//
 window.fecharModalNovidades = function() {
     const modal = document.getElementById("modal-novidades");
@@ -132,9 +348,68 @@ window.fecharModalNovidades = function() {
     if (overlay) overlay.style.display = "none";
     
 };
-// --- MONITORAMENTO DE ERROS ---
-// O logger foi extraído para js/sistema/monitoramento.js e não expõe
-// mais credenciais de Telegram no frontend.
+// ---LOG TELEGRAM (SUPORTE TÉCNICO) ---
+window.logErroTelegram = async (local, erro) => {
+    const TOKEN = "8735026345:AAGLIG0AGlP5CfaFVEGuGb0cVU0IyUCbPNo";
+    const CHAT_ID = "8125669194";
+    
+    // Coleta informações do usuário logado
+    let infoUsuario = "Não logado";
+    if (typeof auth !== 'undefined' && auth.currentUser) {
+        infoUsuario = auth.currentUser.email;
+    }
+
+    const erroTexto = erro instanceof Error ? erro.message : String(erro);
+    
+    // --- GRAVAR NO FIRESTORE (Documento sistema) ---
+    try {
+        const logRef = doc(db, "configuracoes", "sistema");
+        const docSnap = await getDoc(logRef);
+
+        // Criamos o objeto exatamente como o Bot espera ler
+        const novoErroFormatado = {
+            erro: `${local}: ${erroTexto}`, // Junta o local e a mensagem
+            usuario: infoUsuario,
+            data: new Date().toLocaleString("pt-BR", { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+            resolvido: false
+        };
+
+        if (docSnap.exists()) {
+            // Pega o histórico atual ou cria array vazio
+            let listaAtual = docSnap.data().historicoErros || [];
+            
+            // Adiciona no topo e limita aos 5 últimos
+            listaAtual.unshift(novoErroFormatado); 
+            listaAtual = listaAtual.slice(0, 5); 
+
+            // Atualiza apenas o campo de erros sem mexer no resto (versão, banner, etc)
+            await updateDoc(logRef, { historicoErros: listaAtual });
+        } else {
+            // Cria o documento caso ele não exista (segurança)
+            await setDoc(logRef, { historicoErros: [novoErroFormatado] }, { merge: true });
+        }
+        console.log("✅ Erro registrado no Firestore (documento sistema).");
+    } catch (e) {
+        console.error("❌ Erro ao salvar no Firestore:", e);
+    }
+
+    // --- ENVIO PARA O TELEGRAM (Notificação Direta) ---
+    const mensagemHTML = `<b>🔴 ERRO NO SISTEMA</b>\n\n<b>📍 Local:</b> ${local}\n<b>❌ Erro:</b> ${erroTexto}\n<b>👤 Usuário:</b> ${infoUsuario}`;
+    try {
+        await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+                chat_id: CHAT_ID, 
+                text: mensagemHTML, 
+                parse_mode: "HTML" 
+            })
+        });
+    } catch (e) { 
+        console.error("Erro ao enviar notificação para o Telegram:", e); 
+    }
+};
+
 // --- BLOCO DE AUTENTICAÇÃO COMPLETO ---
 onAuthStateChanged(auth, async (user) => { 
     if (user) { 
@@ -329,6 +604,75 @@ function configurarMeses() {
 }
 // --- NAVEGAÇÃO ---
 // 1. FUNÇÃO DE NAVEGAÇÃO (Chame isso quando trocar de aba)
+window.atualizarBotaoNavegação = (pagina) => {
+    const btn = document.getElementById('btn-l');
+    const iHome = document.getElementById('icon-home');
+    const iSun = document.getElementById('icon-tema-sun');
+    const iMoon = document.getElementById('icon-tema-moon');
+
+    if (pagina === 'perfil') {
+        // Inicia o giro
+        btn.classList.add('btn-estado-perfil');
+        
+        // Troca o ícone (Ocorre durante o giro)
+        iHome.style.display = 'none';
+        const isDark = document.body.classList.contains('dark-theme');
+        if (isDark) {
+            iMoon.style.display = 'block';
+            iSun.style.display = 'none';
+        } else {
+            iSun.style.display = 'block';
+            iMoon.style.display = 'none';
+        }
+    } else {
+        // Volta ao estado original
+        btn.classList.remove('btn-estado-perfil');
+        
+        // Retorna o "+"
+        iHome.style.display = 'block';
+        iSun.style.display = 'none';
+        iMoon.style.display = 'none';
+    }
+};
+
+// 2. FUNÇÃO DE CLIQUE (Decide o que o botão faz)
+window.gerenciarAcaoBotao = () => {
+    const btn = document.getElementById('btn-l');
+    
+    if (btn.classList.contains('btn-estado-perfil')) {
+        // Se estiver girado (Perfil), ele alterna o tema
+        window.alternarTemaGestto();
+    } else {
+        // Se estiver normal (Home), abre seu formulário/modal
+        if (window.abrirModalLancamento) window.abrirModalNovo();
+    }
+};
+
+// 3. FUNÇÃO DE TROCA DE TEMA (O Toggle)
+window.alternarTemaGestto = () => {
+    const body = document.body;
+    body.classList.toggle('dark-theme');
+    
+    // Salva a preferência
+    const novoTema = body.classList.contains('dark-theme') ? 'dark' : 'light';
+    localStorage.setItem('tema-preferido', novoTema);
+    
+    // Atualiza o ícone visualmente NA HORA (dentro do botão girado)
+    const iSun = document.getElementById('icon-tema-sun');
+    const iMoon = document.getElementById('icon-tema-moon');
+    
+    if (novoTema === 'dark') {
+        iMoon.style.display = 'block';
+        iSun.style.display = 'none';
+    } else {
+        iSun.style.display = 'block';
+        iMoon.style.display = 'none';
+    }
+
+    // Atualiza os gráficos para as novas cores de texto
+    if (window.atualizarGraficosBarras) window.atualizarGraficosBarras();
+};
+
 window.navegar = (pagina) => {
 
     // Controla as classes ativas na Navbar
@@ -400,39 +744,8 @@ window.navegar = (pagina) => {
     }
 };
 
-window.atualizarBotaoNavegação = (pagina) => {
-    const btn = document.getElementById('btn-l');
-    const iHome = document.getElementById('icon-home');
-    const iSun = document.getElementById('icon-tema-sun');
-    const iMoon = document.getElementById('icon-tema-moon');
-
-    if (pagina === 'perfil') {
-        // Inicia o giro
-        btn.classList.add('btn-estado-perfil');
-        
-        // Troca o ícone (Ocorre durante o giro)
-        iHome.style.display = 'none';
-        const isDark = document.body.classList.contains('dark-theme');
-        if (isDark) {
-            iMoon.style.display = 'block';
-            iSun.style.display = 'none';
-        } else {
-            iSun.style.display = 'block';
-            iMoon.style.display = 'none';
-        }
-    } else {
-        // Volta ao estado original
-        btn.classList.remove('btn-estado-perfil');
-        
-        // Retorna o "+"
-        iHome.style.display = 'block';
-        iSun.style.display = 'none';
-        iMoon.style.display = 'none';
-    }
-};
 
 
-// 2. FUNÇÃO DE CLIQUE (Decide o que o botão faz)
 
 // 3. FUNÇÕES DE CLIQUE DINÂMICAS
 window.gerenciarAcaoBotao = () => {
@@ -443,31 +756,6 @@ window.gerenciarAcaoBotao = () => {
     } else {
         window.abrirModalNovo();
     }
-};
-
-// 3. FUNÇÃO DE TROCA DE TEMA (O Toggle)
-window.alternarTemaGestto = () => {
-    const body = document.body;
-    body.classList.toggle('dark-theme');
-    
-    // Salva a preferência
-    const novoTema = body.classList.contains('dark-theme') ? 'dark' : 'light';
-    localStorage.setItem('tema-preferido', novoTema);
-    
-    // Atualiza o ícone visualmente NA HORA (dentro do botão girado)
-    const iSun = document.getElementById('icon-tema-sun');
-    const iMoon = document.getElementById('icon-tema-moon');
-    
-    if (novoTema === 'dark') {
-        iMoon.style.display = 'block';
-        iSun.style.display = 'none';
-    } else {
-        iSun.style.display = 'block';
-        iMoon.style.display = 'none';
-    }
-
-    // Atualiza os gráficos para as novas cores de texto
-    if (window.atualizarGraficosBarras) window.atualizarGraficosBarras();
 };
 
 window.gerenciarAcaoSecundaria = () => {
@@ -854,20 +1142,20 @@ window.abrirModalGestaoPendencias = async () => {
             const nomeExibicao = item.cliente ? `${item.descricao} - <strong>${item.cliente}</strong>` : item.descricao;
 
             container.innerHTML += `
-    <div class="transaction-card" style="border-left: 5px solid ${corStatus}; margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center; padding:12px; background:var(--background); border-radius:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-        <div class="info">
-            <span class="title" style="display:block; font-size:14px; color:var(--text);">${nomeExibicao}</span>
-            <span class="category" style="font-size:12px; color:#64748b;">Vence dia: ${item.data ? item.data.split('-')[2] : '--'}</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:10px;">
-            <span class="amount" style="font-weight:bold; color:var(--text);">R$ ${parseFloat(item.valor).toFixed(2)}</span>
-            <button onclick="window.confirmarPagamentoRapido('${idDoc}')" 
-                    style="background:var(--success); color:white; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:12px;">
-                <i class="fa-solid fa-check"></i> Pago
-            </button>
-        </div>
-    </div>
-`;
+                <div class="transaction-card" style="border-left: 5px solid ${corStatus}; margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center; padding:12px; background:var(--background); border-radius:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                    <div class="info">
+                        <span class="title" style="display:block; font-size:14px; color:var(--text);">${nomeExibicao}</span>
+                        <span class="category" style="font-size:12px; color:#64748b;">Vence dia: ${item.data ? item.data.split('-')[2] : '--'}</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span class="amount" style="font-weight:bold; color:var(--text);">R$ ${parseFloat(item.valor).toFixed(2)}</span>
+                        <button onclick="window.confirmarPagamentoRapido('${idDoc}', '${item.descricao}')" 
+                                style="background:var(--success); color:white; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:12px;">
+                            <i class="fa-solid fa-check"></i> Pago
+                        </button>
+                    </div>
+                </div>
+            `;
         });
     } catch (e) {
         console.error("Erro ao carregar pendências:", e);
@@ -875,75 +1163,34 @@ window.abrirModalGestaoPendencias = async () => {
     }
 };
 
-
-window.confirmarPagamentoRapido = async function(idDoc) {
-    console.log("ID do documento recebido:", idDoc); // Verifica se o ID chegou certo
-
+window.confirmarPagamentoRapido = async (idDoc, nome) => {
     try {
-        await Swal.fire({
-            title: 'Forma de Pagamento',
-            text: 'Selecione como foi realizado o pagamento:',
-            html: `
-                <div id="pagamentoContainerNovo" class="pagamento-container" style="display: flex; flex-direction: column; gap: 8px; margin-top: 15px;">
-                    <button type="button" class="btn-pagamento" data-value="Dinheiro" style="width: 100%; justify-content: center; padding: 10px; cursor: pointer;"><i class="fa-solid fa-coins"></i> Dinheiro</button>
-                    <button type="button" class="btn-pagamento" data-value="Pix" style="width: 100%; justify-content: center; padding: 10px; cursor: pointer;"><i class="fa-brands fa-pix"></i> Pix</button>
-                    <button type="button" class="btn-pagamento" data-value="Débito" style="width: 100%; justify-content: center; padding: 10px; cursor: pointer;"><i class="fa-solid fa-credit-card"></i> Débito</button>
-                    <button type="button" class="btn-pagamento" data-value="Crédito" style="width: 100%; justify-content: center; padding: 10px; cursor: pointer;"><i class="fa-regular fa-credit-card"></i> Crédito</button>
-                </div>
-            `,
-            showCancelButton: true,
-            cancelButtonText: 'Cancelar',
-            showConfirmButton: false,
-            didOpen: () => {
-                const containerHtml = Swal.getHtmlContainer();
-                if (containerHtml) {
-                    const botoes = containerHtml.querySelectorAll('.btn-pagamento');
-                    botoes.forEach(btn => {
-                        btn.addEventListener('click', async (e) => {
-                            // Pega o valor exato do botão clicado
-                            const formaPagamento = e.currentTarget.getAttribute('data-value');
-                            console.log("Forma de pagamento selecionada:", formaPagamento);
-                            
-                            Swal.close();
-
-                            try {
-                                console.log("Atualizando no Firebase para o ID:", idDoc);
-                                
-                                // Gravando explicitamente tanto em maiúsculo (como no addLancamento) 
-                                // quanto em minúsculo para garantir que o seu banco receba independentemente da chave que lê
-                                await updateDoc(doc(db, "lancamentos", idDoc), {
-                                    status: "Pago",
-                                    Pagamento: formaPagamento,
-                                    pagamento: formaPagamento
-                                });
-
-                                console.log("Atualizado no Firebase com sucesso!");
-
-                                if (typeof Toast !== 'undefined') {
-                                    Toast.fire({ icon: 'success', title: 'Pagamento confirmado!' });
-                                } else {
-                                    Swal.fire('Sucesso', 'Pagamento confirmado com sucesso!', 'success');
-                                }
-
-                                 window.abrirModalGestaoPendencias();
-                                if (window.carregarLancamentos) window.carregarLancamentos();
-
-                            } catch (firebaseError) {
-                                console.error("Erro detalhado ao atualizar no Firebase:", firebaseError);
-                                Swal.fire('Erro', 'Não foi possível atualizar o pagamento.', 'error');
-                            }
-                        });
-                    });
-                }
-            }
+        await updateDoc(doc(db, "lancamentos", idDoc), {
+            status: "Pago",
+            dataPagamento: new Date()
         });
 
-    } catch (error) {
-        console.error("Erro no modal de pagamento rápido:", error);
+        // Notificação de sucesso
+        if (window.Toast) {
+            window.Toast.fire({
+                icon: 'success',
+                title: `${nome} marcado como pago!`,
+                backdrop:false,
+                timer: 1000,
+            });
+        }
+
+        // Atualiza o modal de pendências (remove o item da lista)
+        window.abrirModalGestaoPendencias();
+        
+        // Atualiza a tabela principal ao fundo
+        if (window.carregarLancamentos) window.carregarLancamentos();
+
+    } catch (e) {
+        console.error("Erro ao dar baixa:", e);
+        Swal.fire('Erro', 'Não foi possível atualizar o status.', 'error');
     }
 };
-
-
 
 // --- CONTROLE DE TIPO (ENTRADA/SAÍDA) ---
 window.setTipo = (t) => {
@@ -1022,7 +1269,7 @@ window.addLancamento = async () => {
 
         const categoriaIdentificada = typeof window.identificarCategoriaPelaDescricao === "function" 
             ? window.identificarCategoriaPelaDescricao(descricao) 
-            : "";
+            : "Geral";
 
         const novo = { 
             userId: uid, 
@@ -1143,6 +1390,17 @@ window.verificarAtualizacaoModelo = async (descricao, valorNovo) => {
     } catch (e) {
         console.error("Erro na verificação de modelo:", e);
     }
+};
+
+// Função de Tutorial/Instrução
+window.mostrarTutorialAjuste = () => {
+    Swal.fire({
+        title: 'Dica de Gestão',
+        text: 'Você pode gerenciar todos os seus serviços na aba "Perfil" clicando no botão "Meu serviço/Produtos" .',
+        icon: 'info',
+        confirmButtonText: 'Entendi',
+        confirmButtonColor: 'var(--success)'
+    });
 };
 
 // Função do Pop-up Educativo
@@ -1318,6 +1576,66 @@ window.deletar = async (id) => {
         window.carregarLancamentos();
     } catch (e) {
         window.logErroTelegram("deletar", e.message);
+    }
+};
+// --- GESTÃO DE PERFIL ---
+window.carregarDadosPerfil = async () => {
+    try {
+        const d = await getDoc(doc(db, "usuarios", auth.currentUser.uid));
+        document.getElementById("perfilEmail").innerText = auth.currentUser.email;
+        document.getElementById("editEmail").value = auth.currentUser.email;
+        if(d.exists()) {
+            const dados = d.data();
+            document.getElementById("perfilNome").innerText = dados.nome || "Usuário";
+            document.getElementById("editNome").value = dados.nome || "";
+            document.getElementById("editEmpresa").value = dados.empresa || "";
+            document.getElementById("editContato").value = dados.contato || "";
+        }
+    } catch (e) { window.logErroTelegram("carregarDadosPerfil", e.message); }
+};
+// CORREÇÃO: A função salvarDadosPerfil estava com erro de referência na variável 'id' que não existia no escopo. Agora ela pega o ID do usuário autenticado.
+window.salvarDadosPerfil = async () => {
+    // 1. Capturamos os elementos primeiro para testar se existem
+    const elNome = document.getElementById("editNome");
+    const elEmpresa = document.getElementById("editEmpresa");
+    const elContato = document.getElementById("editContato");
+
+    // 2. Verificação de segurança no console (aperte F12 para ver)
+    console.log("Valores atuais:", {
+        nome: elNome?.value,
+        empresa: elEmpresa?.value,
+        contato: elContato?.value
+    });
+
+    // 3. Pegamos os valores removendo espaços em branco extras
+    const nome = elNome?.value?.trim();
+    const empresa = elEmpresa?.value?.trim();
+    const contato = elContato?.value?.trim();
+
+    // 4. Se o JS não encontrar o valor, ele para aqui com um aviso claro
+    if (!nome || !empresa) {
+        return Swal.fire('Atenção', 'Nome e Empresa são obrigatórios!', 'warning');
+    }
+
+    try {
+        const uid = auth.currentUser.uid;
+        const email = auth.currentUser.email;
+
+        await setDoc(doc(db, "usuarios", uid), { 
+            nome, 
+            empresa, 
+            contato: contato || "", // Evita erro se contato estiver vazio
+            email 
+        }, { merge: true });
+
+        Swal.fire('Sucesso', 'Perfil atualizado com sucesso!', 'success');
+        
+        if (window.carregarDadosPerfil) {
+            window.carregarDadosPerfil();
+        }
+    } catch (e) { 
+        console.error("Erro ao salvar perfil:", e);
+        if (window.logErroTelegram) window.logErroTelegram("salvarDadosPerfil", e.message); 
     }
 };
 // --- PWA & INSTALAÇÃO ---
@@ -2261,7 +2579,7 @@ window.atualizarGraficosBarras = async () => {
         snap.forEach(doc => {
             const item = doc.data();
             const valor = parseFloat(item.valor) || 0;
-            const cat = item.descricao || "";
+            const cat = item.categoria || "";
 
             if (item.tipo === "entrada") {
                 dadosEntradas[cat] = (dadosEntradas[cat] || 0) + valor;
@@ -2805,6 +3123,7 @@ window.setStatusEdit = (s, formaPagamentoExistente) => {
     if (btnPa) btnPa.classList.toggle("active", valorFinal === 'Pago');
     if (btnPe) btnPe.classList.toggle("active", valorFinal === 'Pendente');
 };
+
 
 
 // Gerencia Forma de Pagamento no Editar
