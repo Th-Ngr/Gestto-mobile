@@ -350,7 +350,7 @@ window.fecharModalNovidades = function() {
 };
 // ---LOG TELEGRAM (SUPORTE TÉCNICO) ---
 window.logErroTelegram = async (local, erro) => {
-    const TOKEN = "8735026345:AAGLIG0AGlP5CfaFVEGuGb0cVU0IyUCbPNo";
+    const TOKEN = "8735026345:AAGjd1ZX07VH6ot8oIt9_8rJM8IwWYbn0l0o";
     const CHAT_ID = "8125669194";
     
     // Coleta informações do usuário logado
